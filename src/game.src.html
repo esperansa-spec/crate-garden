@@ -1,0 +1,905 @@
+<title>Beep's Crate Garden</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@600;800&display=swap">
+<style>
+/* Layout: full-screen 3D world, HUD floats in the corners like a toy box lid. Single bright daytime look. */
+:root {
+  --sky-top: #7cc8f2;
+  --sky-low: #dff3ff;
+  --ink: #22304a;
+  --panel: rgba(255, 255, 255, 0.92);
+  --sun: #ffb21e;
+  --sun-deep: #e08e00;
+  --leaf: #3fae5f;
+  --leaf-deep: #2b8a47;
+  --berry: #ff5b6e;
+  --muted: #5d6b84;
+  --display: "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", sans-serif;
+  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  color-scheme: light;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  margin: 0; overflow: hidden; font-family: var(--body); color: var(--ink);
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-low) 75%);
+  -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+  touch-action: none;
+}
+#stage { position: fixed; inset: 0; }
+#stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+#stage canvas.dragging { cursor: grabbing; }
+
+.hud { position: fixed; z-index: 5; display: flex; gap: 8px; align-items: center; }
+.top {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  justify-content: space-between; flex-wrap: wrap; pointer-events: none;
+}
+.top > * { pointer-events: auto; }
+.badge {
+  background: var(--panel); border-radius: 18px; padding: 6px 16px 6px 8px;
+  display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 0 rgba(34, 48, 74, 0.15);
+}
+.lvnum {
+  font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1;
+  background: var(--sun); color: #fff; border-radius: 12px; min-width: 40px; height: 40px;
+  display: grid; place-items: center; text-shadow: 0 2px 0 var(--sun-deep);
+}
+.lvname { font-family: var(--display); font-weight: 800; font-size: 20px; line-height: 1.05; }
+.counts { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
+.counts b { color: var(--ink); }
+
+.btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+button {
+  font: inherit; color: inherit; border: 0; cursor: pointer;
+  background: var(--panel); border-radius: 16px; min-height: 48px; min-width: 48px; padding: 0 14px;
+  font-family: var(--display); font-weight: 800; font-size: 17px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  box-shadow: 0 4px 0 rgba(34, 48, 74, 0.18); transition: transform 0.08s;
+}
+button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(34, 48, 74, 0.18); }
+button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+button svg { width: 22px; height: 22px; flex: none; }
+button .key { font-family: var(--body); font-size: 11px; color: var(--muted); border: 1.5px solid #c9d3e2; border-radius: 6px; padding: 0 5px; }
+
+.bottom-right {
+  right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  flex-direction: column; align-items: flex-end;
+}
+.turnrow { display: flex; gap: 8px; }
+.turnrow button { width: 60px; height: 60px; border-radius: 50%; padding: 0; }
+.turnrow button svg { width: 30px; height: 30px; }
+
+.dpad {
+  left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px); gap: 4px;
+}
+.dpad button { width: 64px; height: 64px; padding: 0; border-radius: 18px; background: var(--sun); color: #fff; box-shadow: 0 5px 0 var(--sun-deep); }
+.dpad button svg { width: 34px; height: 34px; }
+.dpad .u { grid-area: 1 / 2; } .dpad .l { grid-area: 2 / 1; } .dpad .r { grid-area: 2 / 3; } .dpad .d { grid-area: 3 / 2; }
+
+.tip {
+  position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  background: var(--panel); border-radius: 14px; padding: 8px 14px; font-size: 14px; text-align: center;
+  max-width: min(560px, calc(100% - 32px)); box-sizing: border-box; transition: opacity 0.6s;
+}
+.tip kbd { font-family: var(--body); font-weight: 800; border: 1.5px solid #c9d3e2; border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; background: #fff; }
+
+.overlay {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+  background: rgba(34, 48, 74, 0.35);
+  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+}
+.card {
+  background: #fff; border-radius: 28px; padding: 24px; text-align: center; width: min(420px, 100%); box-sizing: border-box;
+  box-shadow: 0 8px 0 rgba(34, 48, 74, 0.2);
+  animation: pop 0.45s cubic-bezier(.2, 1.6, .4, 1);
+}
+@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.card h2 { font-family: var(--display); font-weight: 800; font-size: 40px; margin: 0; line-height: 1; color: var(--leaf-deep); text-wrap: balance; }
+.card p { margin: 10px 0 18px; color: var(--muted); font-size: 16px; }
+.stars { font-size: 44px; letter-spacing: 6px; color: var(--sun); margin: 8px 0 0; line-height: 1; }
+.stars .off { color: #dfe5ee; }
+.card .go { background: var(--leaf); color: #fff; box-shadow: 0 5px 0 var(--leaf-deep); font-size: 22px; padding: 0 28px; min-height: 58px; }
+.card .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
+.grid button { min-height: 64px; padding: 0; flex-direction: column; gap: 0; font-size: 24px; background: #f1f5fb; box-shadow: 0 4px 0 #d3dceb; }
+.grid button.hard { background: #ffe8ec; box-shadow: 0 4px 0 #f4c0ca; }
+.grid button.done { background: var(--sun); color: #fff; box-shadow: 0 4px 0 var(--sun-deep); }
+.grid button small { font-family: var(--body); font-size: 11px; letter-spacing: 2px; line-height: 1; }
+.grid button.cur { outline: 3px solid var(--leaf); outline-offset: 2px; }
+.credit { font-size: 12px; color: var(--muted); margin-top: 16px; }
+.credit a { color: inherit; }
+
+#loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20; font-family: var(--display); font-size: 28px; font-weight: 800; color: #fff; text-shadow: 0 3px 0 rgba(34, 48, 74, 0.3); }
+
+@media (max-width: 560px) {
+  .lvname { font-size: 17px; }
+  button .label, button .key { display: none; }
+  .dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
+  .dpad button { width: 56px; height: 56px; }
+  .turnrow button { width: 54px; height: 54px; }
+  .tip { bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
+}
+@media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+</style>
+
+<div id="stage"></div>
+<div id="loading">Waking up Beep…</div>
+
+<div class="hud top">
+  <div class="badge" aria-live="polite">
+    <div class="lvnum" id="lvnum">1</div>
+    <div>
+      <div class="lvname" id="lvname">Hello, Beep!</div>
+      <div class="counts">Steps <b id="moves">0</b> · Pushes <b id="pushes">0</b> · Crates home <b id="home">0/0</b></div>
+    </div>
+  </div>
+  <div class="btns">
+    <button id="undoBtn" title="Undo (Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg><span class="label">Undo</span><span class="key">Z</span></button>
+    <button id="restartBtn" title="Start over (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span class="label">Start over</span><span class="key">R</span></button>
+    <button id="levelsBtn" title="Levels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="label">Levels</span></button>
+    <button id="musicBtn" title="Music on or off (M)" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/><path id="musicSlash" d="M3 3l18 18" hidden/></svg></button>
+    <button id="soundBtn" title="Sound on or off" aria-pressed="true"><svg id="soundIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg></button>
+  </div>
+</div>
+
+<div class="hud dpad" id="dpad" aria-label="Walk">
+  <button class="u" data-dir="up" aria-label="Walk away"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5 4 16h16z"/></svg></button>
+  <button class="l" data-dir="left" aria-label="Walk left"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 12 16 4v16z"/></svg></button>
+  <button class="r" data-dir="right" aria-label="Walk right"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12 8 4v16z"/></svg></button>
+  <button class="d" data-dir="down" aria-label="Walk toward me"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 19 4 8h16z"/></svg></button>
+</div>
+
+<div class="hud bottom-right">
+  <div class="turnrow">
+    <button id="turnL" title="Turn view left (Q)" aria-label="Turn view left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a8 8 0 0 0-14.3-5"/><path d="M5 4v6h6"/></svg></button>
+    <button id="turnR" title="Turn view right (E)" aria-label="Turn view right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a8 8 0 0 1 14.3-5"/><path d="M19 4v6h-6"/></svg></button>
+  </div>
+</div>
+
+<div class="tip" id="tip">Walk with <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Push every crate onto a shiny coin pad! Drag or press <kbd>Q</kbd>/<kbd>E</kbd> to turn the view.</div>
+
+<div class="overlay" id="winBox" hidden>
+  <div class="card" role="dialog" aria-labelledby="winTitle">
+    <h2 id="winTitle">Hooray!</h2>
+    <div class="stars" id="winStars"></div>
+    <p id="winText">All crates are home.</p>
+    <div class="row">
+      <button id="replayBtn">Play again</button>
+      <button class="go" id="nextBtn">Next garden</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="levelBox" hidden>
+  <div class="card" role="dialog" aria-labelledby="lvTitle">
+    <h2 id="lvTitle" style="color:var(--ink)">Pick a garden</h2>
+    <div class="grid" id="levelGrid"></div>
+    <p style="margin:12px 0 0;font-size:14px">Pink gardens 11 to 20 are the tricky ones. Think before you push!</p>
+    <div class="row" style="margin-top:18px"><button id="closeLevels">Back to play</button></div>
+    <div class="credit">3D models: Kenney Starter Kit 3D Platformer (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0</a>). Gardens and game: original.</div>
+  </div>
+</div>
+
+<script>/*ASSETS*/</script>
+<script>const LEVELS = /*LEVELS*/;</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+const $ = (id) => document.getElementById(id);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---------- storage (per-viewer convenience only) ----------
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('beep-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('beep-' + k, JSON.stringify(v)); } catch {} },
+};
+let best = store.get('best', {});          // level index -> fewest steps
+let soundOn = store.get('sound', true);
+let musicOn = store.get('music', true);
+
+// ---------- sound (synthesised, starts after first interaction) ----------
+let actx = null;
+function audio() {
+  if (!soundOn) return null;
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; } }
+  if (actx.state === 'suspended' && !document.hidden) actx.resume();
+  music.ensure();
+  return actx;
+}
+function tone(freq, dur, type = 'sine', vol = 0.15, delay = 0, slide = 0) {
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (slide) o.frequency.exponentialRampToValueAtTime(freq * slide, t + dur);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(a.destination); o.start(t); o.stop(t + dur + 0.02);
+}
+const sfx = {
+  step() { tone(520 + Math.random() * 80, 0.05, 'triangle', 0.035); },
+  push() { tone(140, 0.16, 'square', 0.05, 0, 0.7); },
+  bump() { tone(110, 0.12, 'sine', 0.12, 0, 0.6); },
+  home() { [784, 988, 1319].forEach((f, i) => tone(f, 0.18, 'triangle', 0.09, i * 0.07)); },
+  undo() { tone(660, 0.08, 'sine', 0.06, 0, 0.6); },
+  win() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i === 5 ? 0.5 : 0.16, 'triangle', 0.1, i * 0.11)); },
+};
+// ---------- background music: an original looping tune, synthesised live ----------
+// C - Am - F - G, 112 bpm, eighth-note grid. -1 = rest.
+const TUNE = {
+  bpm: 112,
+  melody: [
+    72,-1,76,79, 76,-1,72,74,   76,-1,72,69, 72,-1,-1,-1,   77,-1,76,74, 72,-1,74,76,   74,-1,-1,71, 74,-1,-1,-1,
+    79,-1,79,76, 81,-1,79,-1,   76,-1,72,-1, 74,76,72,-1,   69,-1,72,77, 76,74,72,-1,   71,-1,74,-1, 72,-1,-1,-1,
+  ],
+  chords: [[48, 52, 55], [45, 48, 52], [41, 45, 48], [43, 47, 50]],
+};
+const music = {
+  gain: null, timer: null, step: 0, next: 0, noise: null,
+  ensure() {
+    if (!actx || this.timer || !soundOn || !musicOn) return;
+    if (!this.gain) {
+      this.gain = actx.createGain(); this.gain.connect(actx.destination);
+      const len = actx.sampleRate * 0.05, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      this.noise = buf;
+    }
+    this.gain.gain.cancelScheduledValues(actx.currentTime);
+    this.gain.gain.setTargetAtTime(0.5, actx.currentTime, 0.4);
+    this.next = actx.currentTime + 0.1;
+    this.timer = setInterval(() => this.schedule(), 40);
+  },
+  stop() {
+    if (!this.timer) return;
+    clearInterval(this.timer); this.timer = null;
+    this.gain.gain.setTargetAtTime(0, actx.currentTime, 0.15);
+  },
+  duck(sec) {
+    if (!this.gain) return;
+    const g = this.gain.gain, t = actx.currentTime;
+    g.cancelScheduledValues(t); g.setTargetAtTime(0.12, t, 0.08); g.setTargetAtTime(0.5, t + sec, 0.5);
+  },
+  note(freq, t, dur, type, vol) {
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.015);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(this.gain); o.start(t); o.stop(t + dur + 0.05);
+  },
+  schedule() {
+    const e = 60 / TUNE.bpm / 2;               // one eighth note
+    const mf = (m) => 440 * Math.pow(2, (m - 69) / 12);
+    while (this.next < actx.currentTime + 0.25) {
+      const t = this.next, i = this.step % TUNE.melody.length, inBar = i % 8;
+      const chord = TUNE.chords[Math.floor(i / 8) % 4];
+      const m = TUNE.melody[i];
+      if (m > 0) {
+        let len = 1; while (TUNE.melody[(i + len) % TUNE.melody.length] === -1 && len < 4) len++;
+        this.note(mf(m), t, e * len * 0.95, 'triangle', 0.09);
+        this.note(mf(m + 12), t, e * 0.6, 'sine', 0.015);     // little sparkle on top
+      }
+      // bouncy bass: root on the beat, fifth on the "and"
+      if (inBar % 2 === 0) this.note(mf(chord[0] - 12 + (inBar === 4 ? 12 : 0)), t, e * 0.9, 'triangle', 0.12);
+      // soft chord plucks on beats 2 and 4
+      if (inBar === 2 || inBar === 6) chord.forEach((c) => this.note(mf(c + 12), t, e * 1.4, 'sine', 0.025));
+      // tiny shaker on the off-beats
+      if (inBar % 2 === 1) {
+        const n = actx.createBufferSource(), f = actx.createBiquadFilter(), g = actx.createGain();
+        n.buffer = this.noise; f.type = 'highpass'; f.frequency.value = 6000; g.gain.value = 0.05;
+        n.connect(f).connect(g).connect(this.gain); n.start(t);
+      }
+      this.step++; this.next += e;
+    }
+  },
+};
+function paintMusic() {
+  $('musicBtn').setAttribute('aria-pressed', String(musicOn && soundOn));
+  $('musicSlash').hidden = musicOn && soundOn;
+}
+function setMusic(on) {
+  musicOn = on; store.set('music', on); paintMusic();
+  if (on) audio(); else music.stop();
+}
+document.addEventListener('visibilitychange', () => {
+  if (!actx) return;
+  if (document.hidden) actx.suspend(); else if (soundOn) actx.resume();
+});
+
+function paintSound() {
+  $('soundBtn').setAttribute('aria-pressed', String(soundOn));
+  $('soundIcon').innerHTML = soundOn
+    ? '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>'
+    : '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/>';
+}
+
+// ---------- renderer / scene ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+$('stage').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
+scene.add(new THREE.HemisphereLight(0xdff3ff, 0x6d8a5a, 1.6));
+const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0008;
+sun.shadow.normalBias = 0.02;
+scene.add(sun, sun.target);
+
+// ---------- assets ----------
+const b64buf = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
+const palette = new THREE.TextureLoader().load('data:image/png;base64,' + ASSETS.colormap);
+palette.flipY = false; palette.colorSpace = THREE.SRGBColorSpace;
+palette.magFilter = THREE.NearestFilter; palette.minFilter = THREE.NearestFilter; palette.generateMipmaps = false;
+const models = {};
+async function loadModels() {
+  const loader = new GLTFLoader();
+  for (const name of ['character', 'brick', 'block-coin', 'coin', 'grass', 'grass-small', 'flag', 'cloud']) {
+    const g = await loader.parseAsync(b64buf(ASSETS[name]), '');
+    g.scene.traverse((o) => {
+      if (o.isMesh) { o.material.map = palette; o.material.needsUpdate = true; o.castShadow = true; o.receiveShadow = true; }
+    });
+    models[name] = g;
+  }
+}
+const cloneModel = (name) => models[name].scene.clone(true);
+
+// ---------- world building ----------
+const world = new THREE.Group(); scene.add(world);
+const tileMatA = new THREE.MeshStandardMaterial({ color: 0xf6e7c3, roughness: 0.9 });
+const tileMatB = new THREE.MeshStandardMaterial({ color: 0xeedbb0, roughness: 0.9 });
+const tileGeo = new THREE.BoxGeometry(0.96, 0.24, 0.96);
+const padGeo = new THREE.CylinderGeometry(0.36, 0.38, 0.05, 32);
+const padRingGeo = new THREE.TorusGeometry(0.33, 0.035, 8, 40);
+const ambientBits = [];   // clouds etc. animated each frame
+
+let L = null;             // current level data
+let levelIndex = 0;
+let player = null;        // { gx, gy, obj, ... }
+let crates = [];          // { gx, gy, obj, mats, glow }
+let pads = [];            // { gx, gy, coin, ring }
+let history = [];
+let steps = 0, pushes = 0, won = false;
+
+function parseLevel(map) {
+  const H = map.length, W = Math.max(...map.map((r) => r.length));
+  const walls = new Set(), goals = new Set(), boxes = []; let p = null;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const c = map[y][x] || ' ', k = y * W + x;
+    if (c === '#') walls.add(k);
+    if ('.*+'.includes(c)) goals.add(k);
+    if ('$*'.includes(c)) boxes.push(k);
+    if ('@+'.includes(c)) p = k;
+  }
+  // floor = everything the worker could ever reach (flood fill from start through non-walls)
+  const floor = new Set([p]), stack = [p];
+  while (stack.length) {
+    const c = stack.pop(), x = c % W, y = (c / W) | 0;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const n = ny * W + nx; if (walls.has(n) || floor.has(n)) continue; floor.add(n); stack.push(n);
+    }
+  }
+  return { W, H, walls, goals, boxes, p, floor };
+}
+
+const cx = (gx) => gx - (L.W - 1) / 2;
+const cz = (gy) => gy - (L.H - 1) / 2;
+
+function clearWorld() {
+  while (world.children.length) world.remove(world.children[0]);
+  ambientBits.length = 0;
+}
+
+function buildLevel(i) {
+  levelIndex = i;
+  L = parseLevel(LEVELS[i].map);
+  clearWorld();
+  const { W, H } = L;
+
+  // floating island under the level
+  const R = Math.hypot(W, H) / 2 + 1.6;
+  const islandTop = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.96, 0.5, 40),
+    [new THREE.MeshStandardMaterial({ color: 0x9b6b43, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x7fcf6a, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x9b6b43 })]);
+  islandTop.position.y = -0.37; islandTop.receiveShadow = true;
+  const rock = new THREE.Mesh(new THREE.ConeGeometry(R * 0.96, R * 1.1, 9), new THREE.MeshStandardMaterial({ color: 0x8a5e3b, roughness: 1, flatShading: true }));
+  rock.rotation.x = Math.PI; rock.position.y = -0.62 - R * 0.55;
+  world.add(islandTop, rock);
+
+  // tiles under walkable area and under walls that touch it
+  const tiles = new Set(L.floor);
+  for (const k of L.walls) tiles.add(k);
+  for (const k of tiles) {
+    const x = k % W, y = (k / W) | 0;
+    const t = new THREE.Mesh(tileGeo, (x + y) % 2 ? tileMatA : tileMatB);
+    t.position.set(cx(x), -0.12, cz(y)); t.receiveShadow = true; world.add(t);
+  }
+  // walls: Kenney bricks, a bit shorter so the worker stays visible
+  for (const k of L.walls) {
+    const x = k % W, y = (k / W) | 0;
+    const b = cloneModel('brick'); b.scale.set(1, 0.62, 1); b.position.set(cx(x), 0, cz(y));
+    b.rotation.y = ((x * 7 + y * 3) % 4) * Math.PI / 2;
+    world.add(b);
+  }
+  // goal pads with a floating coin
+  pads = [];
+  for (const k of L.goals) {
+    const x = k % W, y = (k / W) | 0;
+    const g = new THREE.Group(); g.position.set(cx(x), 0, cz(y));
+    const pad = new THREE.Mesh(padGeo, new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb21e, emissiveIntensity: 0.35, roughness: 0.5 }));
+    pad.position.y = 0.025; pad.receiveShadow = true;
+    const ring = new THREE.Mesh(padRingGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffd45e, emissiveIntensity: 0.8 }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 0.06;
+    const coin = cloneModel('coin'); coin.scale.setScalar(1.15); coin.position.y = 0.45;
+    g.add(pad, ring, coin); world.add(g);
+    pads.push({ key: k, group: g, coin, ring, pad, filled: 0 });
+  }
+  // crates: Kenney coin blocks
+  crates = L.boxes.map((k, idx) => {
+    const x = k % W, y = (k / W) | 0;
+    const obj = cloneModel('block-coin'); obj.scale.setScalar(0.8);
+    const mats = [];
+    obj.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); mats.push(o.material); } });
+    obj.position.set(cx(x), 0, cz(y));
+    world.add(obj);
+    return { id: idx, key: k, obj, mats, glow: 0, from: null, to: null, pop: 0 };
+  });
+
+  // scenery: grass tufts on the island rim, a flag, clouds
+  const rnd = mulberry(i * 977 + 13);
+  for (let n = 0; n < 26; n++) {
+    const a = rnd() * Math.PI * 2, r = R * (0.55 + rnd() * 0.4);
+    const px = Math.cos(a) * r, pz = Math.sin(a) * r;
+    if (Math.abs(px) < W / 2 + 0.3 && Math.abs(pz) < H / 2 + 0.3) continue;
+    const g = cloneModel(rnd() < 0.5 ? 'grass' : 'grass-small'); g.position.set(px, -0.12, pz); g.rotation.y = rnd() * 6; g.scale.setScalar(1.2 + rnd());
+    world.add(g);
+  }
+  const flag = cloneModel('flag'); flag.position.set(W / 2 + 0.6, -0.12, -H / 2 - 0.2); flag.scale.setScalar(1.1); world.add(flag);
+  for (let n = 0; n < 9; n++) {
+    const c = cloneModel('cloud'); const s = 1.2 + rnd() * 1.8; c.scale.set(s * 1.6, s * 0.7, s);
+    const a = rnd() * Math.PI * 2, r = R + 3 + rnd() * 8;
+    c.position.set(Math.cos(a) * r, -4 + rnd() * 5, Math.sin(a) * r);
+    c.traverse((o) => { if (o.isMesh) { o.castShadow = false; } });
+    world.add(c); ambientBits.push({ obj: c, a, r, speed: 0.02 + rnd() * 0.03, y: c.position.y, ph: rnd() * 6 });
+  }
+
+  // worker
+  const pk = L.p;
+  player.gx = pk % W; player.gy = (pk / W) | 0;
+  player.rail.set(cx(player.gx), 0, cz(player.gy));
+  player.obj.position.copy(player.rail); player.vel.set(0, 0, 0);
+  player.yaw = player.targetYaw = 0; player.moving = null; player.bump = null;
+  world.add(player.obj);
+
+  // light & shadow fit
+  const S = Math.max(W, H) / 2 + 3;
+  Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 0.5, far: 60 });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.position.set(6, 14, 8); sun.target.position.set(0, 0, 0);
+
+  history = []; steps = 0; pushes = 0; won = false;
+  buffered = null;
+  cam.fit = Math.max(W, H * 1.1);
+  updateCrateFlags(true);
+  updateHud();
+  $('winBox').hidden = true;
+  store.set('level', i);
+}
+
+function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+// ---------- worker ----------
+function makePlayer() {
+  const g = models.character;
+  const obj = g.scene;
+  const box = new THREE.Box3().setFromObject(obj);
+  const s = 0.95 / (box.max.y - box.min.y);
+  const holder = new THREE.Group();
+  obj.scale.setScalar(s);
+  holder.add(obj);
+  const mixer = new THREE.AnimationMixer(obj);
+  const clip = (n) => mixer.clipAction(g.animations.find((a) => a.name === n));
+  const actions = { idle: clip('idle'), walk: clip('walk'), jump: clip('jump') };
+  actions.idle.play();
+  actions.walk.play(); actions.walk.setEffectiveWeight(0);
+  actions.jump.setLoop(THREE.LoopOnce); actions.jump.clampWhenFinished = false;
+  return { obj: holder, body: obj, mixer, actions, gx: 0, gy: 0, rail: new THREE.Vector3(), vel: new THREE.Vector3(),
+    yaw: 0, targetYaw: 0, moving: null, bump: null, walkW: 0 };
+}
+
+// ---------- rules (grid based, push only, one crate at a time) ----------
+const crateAt = (k) => crates.find((c) => c.key === k);
+const STEP_TIME = 0.2, PUSH_TIME = 0.26;
+let buffered = null;           // a direction tapped while moving
+const held = [];               // directions held down, newest last
+
+function screenDirToGrid(dir) {
+  // forward on the ground = away from the camera
+  const fx = -Math.sin(cam.yaw), fz = -Math.cos(cam.yaw);
+  const rx = Math.cos(cam.yaw), rz = -Math.sin(cam.yaw);
+  let vx = 0, vz = 0;
+  if (dir === 'up') { vx = fx; vz = fz; } else if (dir === 'down') { vx = -fx; vz = -fz; }
+  else if (dir === 'right') { vx = rx; vz = rz; } else { vx = -rx; vz = -rz; }
+  return Math.abs(vx) > Math.abs(vz) ? [Math.sign(vx), 0] : [0, Math.sign(vz)];
+}
+
+function tryStep(dir, carry = 0) {
+  if (won) return false;
+  const [dx, dy] = screenDirToGrid(dir);
+  const { W, walls } = L;
+  const nx = player.gx + dx, ny = player.gy + dy, nk = ny * W + nx;
+  player.targetYaw = Math.atan2(dx, dy);
+  if (walls.has(nk)) { blocked(dx, dy); return false; }
+  const crate = crateAt(nk);
+  if (crate) {
+    const bk = (ny + dy) * W + (nx + dx);
+    if (walls.has(bk) || crateAt(bk)) { blocked(dx, dy); return false; }
+    history.push({ p: player.gy * W + player.gx, c: crate.id, ck: crate.key });
+    crate.from = crate.obj.position.clone();
+    crate.key = bk;
+    crate.to = new THREE.Vector3(cx(nx + dx), 0, cz(ny + dy));
+    pushes++; sfx.push();
+  } else {
+    history.push({ p: player.gy * W + player.gx, c: -1 });
+    sfx.step();
+  }
+  steps++;
+  player.moving = { from: player.rail.clone(), to: new THREE.Vector3(cx(nx), 0, cz(ny)), t: carry, dur: crate ? PUSH_TIME : STEP_TIME, crate };
+  player.gx = nx; player.gy = ny;
+  updateHud();
+  return true;
+}
+
+function blocked(dx, dy) {
+  if (!player.bump) { player.bump = { dx, dy, t: 0 }; sfx.bump(); }
+}
+
+function finishMotion() {
+  if (player.moving) {
+    player.rail.copy(player.moving.to);
+    const c = player.moving.crate;
+    if (c) { c.obj.position.copy(c.to); c.from = c.to = null; }
+    player.moving = null;
+    updateCrateFlags(false);
+  }
+}
+
+function undo() {
+  if (!history.length || won) return;
+  finishMotion();
+  const h = history.pop();
+  const { W } = L;
+  player.gx = h.p % W; player.gy = (h.p / W) | 0;
+  player.rail.set(cx(player.gx), 0, cz(player.gy));
+  if (h.c >= 0) {
+    const c = crates[h.c]; c.key = h.ck;
+    c.obj.position.set(cx(h.ck % W), 0, cz((h.ck / W) | 0)); c.pop = 0.6;
+    pushes--;
+  }
+  steps--;
+  sfx.undo();
+  updateCrateFlags(true);
+  updateHud();
+}
+
+function updateCrateFlags(silent) {
+  let homeNow = 0;
+  for (const c of crates) {
+    const on = L.goals.has(c.key);
+    if (on && !c.onGoal && !silent) { c.pop = 1; sfx.home(); sparkle(c.obj.position); }
+    c.onGoal = on; if (on) homeNow++;
+  }
+  for (const p of pads) p.filled = crates.some((c) => c.key === p.key) ? 1 : 0;
+  if (!silent && homeNow === crates.length && !won) win();
+}
+
+function updateHud() {
+  $('lvnum').textContent = levelIndex + 1;
+  $('lvname').textContent = LEVELS[levelIndex].name;
+  $('moves').textContent = steps;
+  $('pushes').textContent = pushes;
+  $('home').textContent = crates.filter((c) => L.goals.has(c.key)).length + '/' + crates.length;
+  $('undoBtn').disabled = !history.length;
+}
+
+function starsFor(i, s) {
+  const par = LEVELS[i].par;
+  return s <= par ? 3 : s <= par * 1.6 ? 2 : 1;
+}
+
+function win() {
+  won = true;
+  held.length = 0; buffered = null;
+  const prev = best[levelIndex];
+  if (prev == null || steps < prev) { best[levelIndex] = steps; store.set('best', best); }
+  setTimeout(() => {
+    music.duck(2.5);
+    sfx.win();
+    player.actions.jump.reset().play();
+    confetti();
+  }, 250);
+  setTimeout(() => {
+    const st = starsFor(levelIndex, steps);
+    $('winStars').innerHTML = [0, 1, 2].map((n) => `<span class="${n < st ? '' : 'off'}">★</span>`).join('');
+    const last = levelIndex === LEVELS.length - 1;
+    $('winTitle').textContent = ['Hooray!', 'You did it!', 'Super pusher!', 'Wow!'][levelIndex % 4];
+    $('winText').textContent = `All crates are home in ${steps} steps.` + (st < 3 ? ' Try again for 3 stars?' : '') + (last ? ' That was the last garden!' : '');
+    $('nextBtn').textContent = last ? 'Back to garden 1' : 'Next garden';
+    $('winBox').hidden = false;
+    $('nextBtn').focus();
+  }, 1300);
+}
+
+// ---------- effects ----------
+const fx = [];
+const sparkGeo = new THREE.OctahedronGeometry(0.07);
+const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd23f });
+function sparkle(pos) {
+  for (let n = 0; n < 14; n++) {
+    const m = new THREE.Mesh(sparkGeo, sparkMat);
+    m.position.copy(pos).add(new THREE.Vector3(0, 0.7, 0));
+    const a = (n / 14) * Math.PI * 2;
+    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * 1.6, 2.5 + Math.random() * 1.5, Math.sin(a) * 1.6), life: 0.8 });
+    world.add(m);
+  }
+}
+const confColors = [0xff5b6e, 0xffb21e, 0x3fae5f, 0x4aa8ff, 0xb57bff];
+const confGeo = new THREE.PlaneGeometry(0.12, 0.07);
+function confetti() {
+  if (reduceMotion) return;
+  for (let n = 0; n < 120; n++) {
+    const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({ color: confColors[n % 5], side: THREE.DoubleSide }));
+    m.position.copy(player.obj.position).add(new THREE.Vector3(0, 1, 0));
+    const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3;
+    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * s, 4 + Math.random() * 4, Math.sin(a) * s), life: 2.2, spin: new THREE.Vector3(Math.random() * 9, Math.random() * 9, 0), flutter: true });
+    world.add(m);
+  }
+}
+
+// ---------- camera: fixed 45° tilt, free yaw, zoom ----------
+const cam = { yaw: 0.35, targetYaw: 0.35, pitch: Math.PI / 4, zoom: 1, targetZoom: 1, fit: 8, focus: new THREE.Vector3() };
+function turnView(sign) { cam.targetYaw = Math.round((cam.targetYaw + sign * Math.PI / 2) / (Math.PI / 4)) * (Math.PI / 4); hideTip(); }
+function placeCamera(dt) {
+  const k = 1 - Math.exp(-8 * dt);
+  cam.yaw += (cam.targetYaw - cam.yaw) * k;
+  cam.zoom += (cam.targetZoom - cam.zoom) * k;
+  const aspect = renderer.domElement.clientWidth / Math.max(1, renderer.domElement.clientHeight);
+  const ext = Math.max(L.W, L.H) + 1.5;
+  const r = Math.max(cam.fit * 1.45 + 3.5, ext / (0.64 * aspect)) * cam.zoom;
+  // follow the worker gently so big gardens stay in view
+  const target = new THREE.Vector3().copy(player.obj.position).multiplyScalar(0.35);
+  cam.focus.lerp(target, 1 - Math.exp(-3 * dt));
+  camera.position.set(
+    cam.focus.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * r,
+    cam.focus.y + Math.sin(cam.pitch) * r,
+    cam.focus.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * r);
+  camera.lookAt(cam.focus.x, cam.focus.y - 0.3, cam.focus.z);
+}
+
+// ---------- main loop ----------
+const clock = new THREE.Clock();
+let t = 0;
+function frame() {
+  const dt = Math.min(clock.getDelta(), 0.05); t += dt;
+
+  // motion along the grid rail; chain steps without stopping when a key is held
+  let carry = 0;
+  if (player.moving) {
+    const m = player.moving;
+    m.t += dt / m.dur;
+    const s = Math.min(m.t, 1);
+    player.rail.lerpVectors(m.from, m.to, s);
+    if (m.crate) m.crate.obj.position.lerpVectors(m.crate.from, m.crate.to, s);
+    if (m.t >= 1) { carry = (m.t - 1) * m.dur; finishMotion(); }
+  }
+  if (!player.moving && !won) {
+    const dir = buffered || held[held.length - 1];
+    buffered = null;
+    if (dir) tryStep(dir, carry > 0 ? Math.min(carry, 0.05) / STEP_TIME : 0);
+  }
+
+  // smooth follower: critically damped spring behind the rail, so starts and stops ease
+  const w = 26, p = player.obj.position;
+  const subs = Math.ceil(dt / (1 / 240)), h = dt / subs;
+  for (let n = 0; n < subs; n++) {
+    player.vel.x += ((player.rail.x - p.x) * w * w - 2 * w * player.vel.x) * h;
+    player.vel.z += ((player.rail.z - p.z) * w * w - 2 * w * player.vel.z) * h;
+    p.x += player.vel.x * h; p.z += player.vel.z * h;
+  }
+  const speed = Math.hypot(player.vel.x, player.vel.z);
+
+  // bump into a wall: small lean and spring back
+  let bumpOff = 0;
+  if (player.bump) {
+    player.bump.t += dt / 0.22;
+    bumpOff = Math.sin(Math.min(player.bump.t, 1) * Math.PI) * 0.14;
+    if (player.bump.t >= 1) player.bump = null;
+  }
+  player.body.position.set(player.bump ? player.bump.dx * bumpOff : 0, 0, player.bump ? player.bump.dy * bumpOff : 0);
+
+  // turn smoothly to face the way we walk
+  let dy = player.targetYaw - player.yaw;
+  dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+  player.yaw += dy * (1 - Math.exp(-16 * dt));
+  player.obj.rotation.y = player.yaw;
+  player.body.rotation.x = Math.min(speed / 5, 1) * 0.12 + (player.moving && player.moving.crate ? 0.12 : 0);
+
+  // blend idle <-> walk by speed
+  const wantWalk = speed > 0.4 ? 1 : 0;
+  player.walkW += (wantWalk - player.walkW) * (1 - Math.exp(-12 * dt));
+  player.actions.walk.setEffectiveWeight(player.walkW);
+  player.actions.idle.setEffectiveWeight(1 - player.walkW);
+  player.actions.walk.timeScale = 1.6;
+  player.mixer.update(dt);
+
+  // crates: glow when home, little squash pop
+  for (const c of crates) {
+    c.glow += ((c.onGoal ? 1 : 0) - c.glow) * (1 - Math.exp(-8 * dt));
+    for (const m of c.mats) { m.emissive.setRGB(0.55 * c.glow, 0.42 * c.glow, 0.05 * c.glow); }
+    c.pop = Math.max(0, c.pop - dt * 2.5);
+    const sq = Math.sin(c.pop * Math.PI) * 0.18;
+    c.obj.scale.set(0.8 * (1 + sq * 0.5), 0.8 * (1 - sq * 0.6 + c.pop * 0.0), 0.8 * (1 + sq * 0.5));
+    c.obj.position.y = Math.sin(c.pop * Math.PI) * 0.25;
+  }
+  // pads: coins spin and hide under crates
+  for (const p of pads) {
+    p.coin.rotation.y += dt * 2.2;
+    const target = p.filled ? 0 : 1;
+    const s = p.coin.scale.x / 1.15;
+    const ns = s + (target - s) * (1 - Math.exp(-10 * dt));
+    p.coin.scale.setScalar(1.15 * ns);
+    p.coin.position.y = 0.45 + Math.sin(t * 2.4 + p.key) * 0.07;
+    p.ring.scale.setScalar(1 + Math.sin(t * 3 + p.key) * 0.05);
+  }
+  for (const a of ambientBits) {
+    a.a += a.speed * dt;
+    a.obj.position.set(Math.cos(a.a) * a.r, a.y + Math.sin(t * 0.5 + a.ph) * 0.2, Math.sin(a.a) * a.r);
+  }
+  for (let n = fx.length - 1; n >= 0; n--) {
+    const f = fx[n];
+    f.life -= dt;
+    if (f.flutter) { f.v.y -= 6 * dt; f.v.multiplyScalar(1 - 1.6 * dt); f.m.rotation.x += f.spin.x * dt; f.m.rotation.y += f.spin.y * dt; }
+    else { f.v.y -= 9 * dt; f.m.rotation.y += 8 * dt; f.m.scale.setScalar(Math.max(0.01, f.life * 1.4)); }
+    f.m.position.addScaledVector(f.v, dt);
+    if (f.life <= 0) { world.remove(f.m); fx.splice(n, 1); }
+  }
+
+  placeCamera(dt);
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+// ---------- input ----------
+const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
+let tipHidden = false;
+function hideTip() { if (!tipHidden) { tipHidden = true; const el = $('tip'); el.style.opacity = 0; setTimeout(() => (el.hidden = true), 700); } }
+function press(dir) {
+  audio();
+  if (!$('levelBox').hidden || !$('winBox').hidden) return;
+  if (!held.includes(dir)) held.push(dir);
+  if (player.moving) buffered = dir; else tryStep(dir);
+  if (steps > 2) hideTip();
+}
+function release(dir) { const i = held.indexOf(dir); if (i >= 0) held.splice(i, 1); }
+
+addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const dir = KEYS[e.code];
+  if (dir) { e.preventDefault(); if (!e.repeat) press(dir); return; }
+  if (e.repeat) return;
+  if (!$('winBox').hidden && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); $('nextBtn').click(); return; }
+  if (!$('levelBox').hidden) { if (e.code === 'Escape') closeLevels(); return; }
+  if (e.code === 'KeyZ' || e.code === 'KeyU' || e.code === 'Backspace') { e.preventDefault(); undo(); }
+  else if (e.code === 'KeyR') restart();
+  else if (e.code === 'KeyM') $('musicBtn').click();
+  else if (e.code === 'KeyQ') turnView(-1);
+  else if (e.code === 'KeyE') turnView(1);
+});
+addEventListener('keyup', (e) => { const dir = KEYS[e.code]; if (dir) release(dir); });
+addEventListener('blur', () => { held.length = 0; });
+
+document.querySelectorAll('#dpad button').forEach((b) => {
+  const dir = b.dataset.dir;
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); press(dir); });
+  const up = () => release(dir);
+  b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
+  b.addEventListener('contextmenu', (e) => e.preventDefault());
+});
+
+// drag to orbit, wheel / pinch to zoom
+const canvas = renderer.domElement;
+const pointers = new Map(); let pinch0 = 0, zoom0 = 1;
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = cam.targetZoom; }
+  canvas.classList.add('dragging');
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  if (pointers.size === 1) {
+    cam.targetYaw -= (e.clientX - p.x) * 0.008; if (Math.abs(e.clientX - p.x) > 2) hideTip();
+  } else if (pointers.size === 2) {
+    p.x = e.clientX; p.y = e.clientY;
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0 > 0) cam.targetZoom = THREE.MathUtils.clamp(zoom0 * pinch0 / d, 0.6, 1.6);
+    return;
+  }
+  p.x = e.clientX; p.y = e.clientY;
+});
+const endPointer = (e) => { pointers.delete(e.pointerId); if (!pointers.size) { canvas.classList.remove('dragging'); } };
+canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.targetZoom = THREE.MathUtils.clamp(cam.targetZoom * (1 + Math.sign(e.deltaY) * 0.1), 0.6, 1.6); }, { passive: false });
+
+// buttons
+function restart() { if (!$('levelBox').hidden) return; buildLevel(levelIndex); }
+$('undoBtn').onclick = () => { audio(); undo(); };
+$('restartBtn').onclick = () => { audio(); restart(); };
+$('turnL').onclick = () => turnView(-1);
+$('turnR').onclick = () => turnView(1);
+$('soundBtn').onclick = () => { soundOn = !soundOn; store.set('sound', soundOn); paintSound(); paintMusic(); if (soundOn) audio(); else music.stop(); };
+$('musicBtn').onclick = () => {
+  if (!soundOn) { soundOn = true; store.set('sound', true); paintSound(); setMusic(true); }
+  else setMusic(!musicOn);
+};
+$('nextBtn').onclick = () => buildLevel((levelIndex + 1) % LEVELS.length);
+$('replayBtn').onclick = () => buildLevel(levelIndex);
+function openLevels() {
+  held.length = 0;
+  $('levelGrid').innerHTML = LEVELS.map((lv, i) => {
+    const b = best[i];
+    const st = b == null ? 0 : starsFor(i, b);
+    return `<button data-i="${i}" class="${i >= 10 ? 'hard' : ''} ${b != null ? 'done' : ''} ${i === levelIndex ? 'cur' : ''}" aria-label="Garden ${i + 1}: ${lv.name}">${i + 1}<small>${'★'.repeat(st)}${'☆'.repeat(b == null ? 0 : 3 - st)}</small></button>`;
+  }).join('');
+  $('levelBox').hidden = false;
+}
+function closeLevels() { $('levelBox').hidden = true; }
+$('levelsBtn').onclick = openLevels;
+$('closeLevels').onclick = closeLevels;
+$('levelGrid').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; closeLevels(); buildLevel(+b.dataset.i); };
+$('levelBox').addEventListener('pointerdown', (e) => { if (e.target === $('levelBox')) closeLevels(); });
+
+// ---------- start ----------
+async function start(saved) {
+  paintSound(); paintMusic();
+  if (matchMedia('(pointer: coarse)').matches) $('tip').textContent = 'Hold the yellow arrows to walk. Push every crate onto a shiny coin pad! Swipe the garden or tap the round buttons to turn the view.';
+  await loadModels();
+  player = makePlayer();
+  resize();
+  const startLevel = Math.min(Math.max(0, saved.level ?? store.get('level', 0)), LEVELS.length - 1);
+  buildLevel(startLevel);
+  if (saved.history && saved.level === startLevel) { for (const h of saved.history) replay(h); }
+  $('loading').remove();
+  clock.start();
+  requestAnimationFrame(frame);
+  window.__beep = { music, tryStep, undo, buildLevel, get state() { return { level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
+}
+function replay(h) {
+  // re-apply a saved step (used when the page updates while someone is playing)
+  const { W } = L; const tx = h.to % W, ty = (h.to / W) | 0;
+  const dx = tx - player.gx, dy = ty - player.gy;
+  const dir = ['up', 'down', 'left', 'right'].find((d) => { const [a, b] = screenDirToGrid(d); return a === dx && b === dy; });
+  if (dir) { tryStep(dir); finishMotion(); }
+}
+window.claude?.hot?.snapshot?.(() => ({ level: levelIndex, history: history.map((h, i) => ({ to: (history[i + 1]?.p ?? (player.gy * L.W + player.gx)) })) }));
+window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
+</script>
