@@ -137,7 +137,7 @@ button .key { font-family: var(--body); font-size: 11px; color: var(--muted); bo
     <div class="lvnum" id="lvnum">1</div>
     <div>
       <div class="lvname" id="lvname">Hello, Beep!</div>
-      <div class="counts">Steps <b id="moves">0</b> · Pushes <b id="pushes">0</b> · Crates home <b id="home">0/0</b></div>
+      <div class="counts">Pushes <b id="pushes">0</b> · Best for 3 stars <b id="par">0</b> · Crates home <b id="home">0/0</b></div>
     </div>
   </div>
   <div class="btns">
@@ -202,19 +202,41 @@ const store = {
   get(k, d) { try { const v = localStorage.getItem('beep-' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem('beep-' + k, JSON.stringify(v)); } catch {} },
 };
-let best = store.get('best', {});          // level index -> fewest steps
+let best = store.get('bestPushes', {});    // level index -> fewest pushes
 let soundOn = store.get('sound', true);
 let musicOn = store.get('music', true);
 
 // ---------- sound (synthesised, starts after first interaction) ----------
 let actx = null;
+function newContext() {
+  try { if (actx && actx.state !== 'closed') actx.close(); } catch {}
+  try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { actx = null; }
+  music.reset();
+  return actx;
+}
 function audio() {
   if (!soundOn) return null;
-  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; } }
-  if (actx.state === 'suspended' && !document.hidden) actx.resume();
+  if (!actx || actx.state === 'closed') newContext();
+  if (!actx) return null;
+  // iPad/iPhone leave the context 'interrupted' or 'suspended' after the app was in the background
+  if (actx.state !== 'running' && !document.hidden) actx.resume().catch(() => {});
   music.ensure();
   return actx;
 }
+// Wake sound up from inside a real tap or key press: iOS only allows it there.
+let unlockedAt = 0;
+function unlockAudio() {
+  if (!soundOn || document.hidden) return;
+  const a = audio(); if (!a) return;
+  if (a.state !== 'running') {
+    // play a silent blip inside the gesture; this is what lets iOS restart audio
+    try { const b = a.createBuffer(1, 1, 22050), src = a.createBufferSource(); src.buffer = b; src.connect(a.destination); src.start(0); } catch {}
+    const tried = performance.now(); unlockedAt = tried;
+    // if it is still stuck shortly after, start over with a fresh audio context (the next tap then works)
+    setTimeout(() => { if (actx === a && a.state !== 'running' && unlockedAt === tried) newContext(); }, 400);
+  }
+}
+['pointerdown', 'touchend', 'keydown'].forEach((ev) => addEventListener(ev, unlockAudio, { capture: true, passive: true }));
 function tone(freq, dur, type = 'sine', vol = 0.15, delay = 0, slide = 0) {
   const a = audio(); if (!a) return;
   const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
@@ -243,6 +265,7 @@ const TUNE = {
 };
 const music = {
   gain: null, timer: null, step: 0, next: 0, noise: null,
+  reset() { if (this.timer) clearInterval(this.timer); this.timer = null; this.gain = null; this.noise = null; },
   ensure() {
     if (!actx || this.timer || !soundOn || !musicOn) return;
     if (!this.gain) {
@@ -275,6 +298,8 @@ const music = {
   },
   schedule() {
     const e = 60 / TUNE.bpm / 2;               // one eighth note
+    if (actx.state !== 'running') return;
+    if (this.next < actx.currentTime) this.next = actx.currentTime + 0.05;   // catch up after a pause, don't burst
     const mf = (m) => 440 * Math.pow(2, (m - 69) / 12);
     while (this.next < actx.currentTime + 0.25) {
       const t = this.next, i = this.step % TUNE.melody.length, inBar = i % 8;
@@ -307,10 +332,13 @@ function setMusic(on) {
   musicOn = on; store.set('music', on); paintMusic();
   if (on) audio(); else music.stop();
 }
+function onShow() { if (actx && soundOn && actx.state !== 'running') actx.resume().catch(() => {}); }
 document.addEventListener('visibilitychange', () => {
   if (!actx) return;
-  if (document.hidden) actx.suspend(); else if (soundOn) actx.resume();
+  if (document.hidden) actx.suspend().catch(() => {}); else onShow();
 });
+addEventListener('pageshow', onShow);
+addEventListener('focus', onShow);
 
 function paintSound() {
   $('soundBtn').setAttribute('aria-pressed', String(soundOn));
@@ -609,22 +637,22 @@ function updateCrateFlags(silent) {
 function updateHud() {
   $('lvnum').textContent = levelIndex + 1;
   $('lvname').textContent = LEVELS[levelIndex].name;
-  $('moves').textContent = steps;
+  $('par').textContent = LEVELS[levelIndex].parPushes;
   $('pushes').textContent = pushes;
   $('home').textContent = crates.filter((c) => L.goals.has(c.key)).length + '/' + crates.length;
   $('undoBtn').disabled = !history.length;
 }
 
 function starsFor(i, s) {
-  const par = LEVELS[i].par;
-  return s <= par ? 3 : s <= par * 1.6 ? 2 : 1;
+  const par = LEVELS[i].parPushes;
+  return s <= par ? 3 : s <= par + Math.max(2, Math.ceil(par * 0.5)) ? 2 : 1;
 }
 
 function win() {
   won = true;
   held.length = 0; buffered = null;
   const prev = best[levelIndex];
-  if (prev == null || steps < prev) { best[levelIndex] = steps; store.set('best', best); }
+  if (prev == null || pushes < prev) { best[levelIndex] = pushes; store.set('bestPushes', best); }
   setTimeout(() => {
     music.duck(2.5);
     sfx.win();
@@ -632,11 +660,11 @@ function win() {
     confetti();
   }, 250);
   setTimeout(() => {
-    const st = starsFor(levelIndex, steps);
+    const st = starsFor(levelIndex, pushes);
     $('winStars').innerHTML = [0, 1, 2].map((n) => `<span class="${n < st ? '' : 'off'}">★</span>`).join('');
     const last = levelIndex === LEVELS.length - 1;
     $('winTitle').textContent = ['Hooray!', 'You did it!', 'Super pusher!', 'Wow!'][levelIndex % 4];
-    $('winText').textContent = `All crates are home in ${steps} steps.` + (st < 3 ? ' Try again for 3 stars?' : '') + (last ? ' That was the last garden!' : '');
+    $('winText').textContent = `All crates are home in ${pushes} pushes.` + (st < 3 ? ' Try again for 3 stars?' : '') + (last ? ' That was the last garden!' : '');
     $('nextBtn').textContent = last ? 'Back to garden 1' : 'Next garden';
     $('winBox').hidden = false;
     $('nextBtn').focus();
@@ -891,7 +919,7 @@ async function start(saved) {
   $('loading').remove();
   clock.start();
   requestAnimationFrame(frame);
-  window.__beep = { music, tryStep, undo, buildLevel, get state() { return { level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
+  window.__beep = { music, get audioState() { return actx ? actx.state : "none"; }, suspendAudio: () => actx.suspend(), tryStep, undo, buildLevel, get state() { return { level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
 }
 function replay(h) {
   // re-apply a saved step (used when the page updates while someone is playing)
