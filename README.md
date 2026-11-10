@@ -1,6 +1,6 @@
 # Beep's Crate Garden
 
-A 3D crate-pushing puzzle for kids. Guide Beep the robot around floating garden islands and push every crate onto its star ring. Twenty gardens across four times of day, from Morning Meadow to Starlight Grove.
+A 3D crate-pushing puzzle for kids. Guide Beep the robot around floating garden islands and push every crate onto its star ring. Twenty gardens across four times of day, from Morning Meadow to Starlight Grove. Each garden has one animal friend living on the grass (bunny, ladybird, tortoise, duck, frog, snail or hedgehog). Tap it and it jumps for joy.
 
 **Play:** https://esperansa-spec.github.io/crate-garden/
 

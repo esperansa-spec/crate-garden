@@ -720,6 +720,8 @@ const GEO = {
   crate: new RoundedBoxGeometry(0.8, 0.8, 0.8, 3, 0.07),
   pad: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
   ball: ball(2), ballLow: ball(1),
+  dome: new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2),
+  stalk: new THREE.CylinderGeometry(1, 1, 1, 6),
   trunk: new THREE.CylinderGeometry(0.07, 0.12, 0.5, 7).translate(0, 0.25, 0),
   cone: new THREE.ConeGeometry(1, 1, 9),
   rockBit: new THREE.DodecahedronGeometry(1, 0),
@@ -900,6 +902,94 @@ function makeSign(n, th) {
   g.add(post, board); return g;
 }
 
+
+// ---------- garden animals: one lives on the grass of each garden ----------
+// Which animal lives where: a fixed shuffle, so every garden always has the same friend.
+const ANIMAL_KINDS = { bunny: { gait: 'hop', speed: 1.5, hop: 0.2, stride: 0.45 }, ladybird: { gait: 'crawl', speed: 0.55 }, tortoise: { gait: 'crawl', speed: 0.22 },
+  duck: { gait: 'waddle', speed: 0.6 }, frog: { gait: 'hop', speed: 1.7, hop: 0.3, stride: 0.7 }, snail: { gait: 'crawl', speed: 0.12 }, hedgehog: { gait: 'waddle', speed: 0.45 } };
+const ANIMAL_ORDER = (() => {
+  const bag = ['bunny', 'ladybird', 'tortoise', 'duck', 'frog', 'snail', 'hedgehog'], r = mulberry(2024), out = [];
+  const pool = [...bag, ...bag, 'bunny', 'ladybird', 'tortoise', 'duck', 'frog', 'snail'];
+  while (pool.length) {
+    let k = (r() * pool.length) | 0;
+    for (let tries = 0; tries < 8 && pool[k] === out[out.length - 1]; tries++) k = (r() * pool.length) | 0;
+    out.push(pool.splice(k, 1)[0]);
+  }
+  out[0] = 'bunny';          // the very first garden always gets the bunny
+  return out;
+})();
+function makeAnimal(kind) {
+  const g = new THREE.Group(), body = new THREE.Group(); g.add(body);
+  const mats = {};
+  const mt = (c, o) => (mats[c] ||= M(c, { roughness: 0.75, ...o }));
+  const add = (geo, c, x, y, z, sx, sy = sx, sz = sx, rx = 0, rz = 0) => {
+    const m = new THREE.Mesh(geo, mt(c)); m.position.set(x, y, z); m.scale.set(sx, sy, sz); m.rotation.set(rx, 0, rz); m.castShadow = true; body.add(m); return m;
+  };
+  const eyes = (x, y, z, s = 0.022) => { add(GEO.ballLow, 0x1c1c2a, x, y, z, s); add(GEO.ballLow, 0x1c1c2a, -x, y, z, s); };
+  const B = GEO.ball, D = GEO.dome;
+  if (kind === 'bunny') {
+    add(B, 0xffffff, 0, 0.2, 0, 0.19, 0.19, 0.23); add(B, 0xffffff, 0, 0.4, 0.13, 0.15);
+    for (const sx of [-1, 1]) { add(B, 0xffffff, sx * 0.065, 0.62, 0.1, 0.04, 0.14, 0.035, -0.15, -sx * 0.12); add(B, 0xffb3c7, sx * 0.065, 0.62, 0.125, 0.022, 0.1, 0.02, -0.15, -sx * 0.12); add(B, 0xffffff, sx * 0.1, 0.04, 0.12, 0.06, 0.04, 0.1); }
+    add(B, 0xffffff, 0, 0.2, -0.24, 0.07); add(B, 0xff8fa8, 0, 0.385, 0.275, 0.022); eyes(0.07, 0.43, 0.25);
+    add(B, 0xffd0dc, 0.1, 0.37, 0.22, 0.03, 0.022, 0.02); add(B, 0xffd0dc, -0.1, 0.37, 0.22, 0.03, 0.022, 0.02);
+  } else if (kind === 'ladybird') {
+    add(D, 0xf23a3a, 0, 0.03, 0, 0.2, 0.17, 0.24); add(B, 0x22222c, 0, 0.08, 0.2, 0.1, 0.085, 0.09);
+    add(B, 0x22222c, 0, 0.115, -0.01, 0.012, 0.09, 0.235);
+    for (const [x, y, z] of [[0.09, 0.15, 0.08], [0.11, 0.12, -0.08], [0.05, 0.16, -0.14]]) { add(B, 0x22222c, x, y, z, 0.035, 0.018, 0.035, 0, -0.5); add(B, 0x22222c, -x, y, z, 0.035, 0.018, 0.035, 0, 0.5); }
+    add(B, 0xffffff, 0.045, 0.11, 0.27, 0.026); add(B, 0xffffff, -0.045, 0.11, 0.27, 0.026); eyes(0.047, 0.112, 0.29, 0.013);
+    for (const sx of [-1, 1]) add(GEO.stalk, 0x22222c, sx * 0.04, 0.2, 0.24, 0.007, 0.09, 0.007, 0.5, -sx * 0.3);
+    body.scale.setScalar(1.1);
+  } else if (kind === 'tortoise') {
+    add(D, 0xb9783a, 0, 0.1, 0, 0.24, 0.2, 0.28); add(GEO.stalk, 0xe8d79a, 0, 0.09, 0, 0.245, 0.04, 0.285);
+    for (const [x, y, z, s] of [[0, 0.27, 0, 0.09], [0.12, 0.2, 0.1, 0.06], [-0.12, 0.2, 0.1, 0.06], [0.12, 0.2, -0.11, 0.06], [-0.12, 0.2, -0.11, 0.06], [0, 0.22, -0.19, 0.05], [0, 0.22, 0.18, 0.05]]) add(B, 0xe6b25c, x, y, z, s, s * 0.35, s);
+    add(B, 0xa6d977, 0, 0.17, 0.33, 0.1, 0.095, 0.1); eyes(0.06, 0.2, 0.4);
+    for (const [x, z] of [[0.19, 0.17], [-0.19, 0.17], [0.19, -0.17], [-0.19, -0.17]]) add(B, 0xa6d977, x, 0.05, z, 0.065, 0.055, 0.07);
+    add(B, 0xa6d977, 0, 0.07, -0.3, 0.03, 0.025, 0.05);
+  } else if (kind === 'duck') {
+    add(B, 0xffffff, 0, 0.2, -0.02, 0.17, 0.16, 0.23); add(B, 0xffffff, 0, 0.43, 0.13, 0.12);
+    add(B, 0xffffff, 0, 0.3, 0.1, 0.085, 0.12, 0.085);
+    add(B, 0xff9a1f, 0, 0.405, 0.26, 0.06, 0.025, 0.07); eyes(0.06, 0.46, 0.22);
+    for (const sx of [-1, 1]) { add(B, 0xf1f1f6, sx * 0.16, 0.21, -0.04, 0.04, 0.1, 0.16); add(B, 0xff9a1f, sx * 0.08, 0.02, 0.05, 0.06, 0.018, 0.08); }
+    add(GEO.cone, 0xffffff, 0, 0.3, -0.24, 0.08, 0.14, 0.08, -0.9);
+  } else if (kind === 'frog') {
+    add(B, 0x5fc94a, 0, 0.14, 0, 0.2, 0.15, 0.21); add(B, 0xd8f5a8, 0, 0.1, 0.07, 0.15, 0.1, 0.16);
+    for (const sx of [-1, 1]) {
+      add(B, 0x5fc94a, sx * 0.1, 0.3, 0.1, 0.075); add(B, 0xffffff, sx * 0.105, 0.31, 0.14, 0.055); add(B, 0x1c1c2a, sx * 0.11, 0.315, 0.185, 0.026);
+      add(B, 0x4bb53a, sx * 0.2, 0.08, -0.12, 0.08, 0.075, 0.13); add(B, 0x4bb53a, sx * 0.16, 0.03, 0.17, 0.05, 0.03, 0.06);
+    }
+    add(B, 0x2f7d27, 0, 0.17, 0.2, 0.09, 0.008, 0.02);
+  } else if (kind === 'snail') {
+    add(B, 0xf3d6a2, 0, 0.07, 0.04, 0.11, 0.07, 0.3); add(B, 0xf3d6a2, 0, 0.14, 0.3, 0.085, 0.09, 0.085);
+    add(B, 0xff8a5c, 0, 0.27, -0.05, 0.12, 0.2, 0.2); add(B, 0xffc08a, 0.125, 0.27, -0.05, 0.02, 0.12, 0.12); add(B, 0xffc08a, -0.125, 0.27, -0.05, 0.02, 0.12, 0.12);
+    add(B, 0xff8a5c, 0.14, 0.27, -0.05, 0.02, 0.055, 0.055); add(B, 0xff8a5c, -0.14, 0.27, -0.05, 0.02, 0.055, 0.055);
+    for (const sx of [-1, 1]) { add(GEO.stalk, 0xf3d6a2, sx * 0.045, 0.28, 0.32, 0.012, 0.14, 0.012, 0.2, -sx * 0.2); add(B, 0xffffff, sx * 0.06, 0.36, 0.335, 0.03); add(B, 0x1c1c2a, sx * 0.062, 0.365, 0.36, 0.014); }
+  } else {  // hedgehog
+    add(B, 0x8a5a3a, 0, 0.17, -0.03, 0.2, 0.17, 0.25); add(GEO.cone, 0xf2d3a8, 0, 0.13, 0.25, 0.11, 0.2, 0.11, Math.PI / 2); add(B, 0xf2d3a8, 0, 0.15, 0.15, 0.13, 0.12, 0.12);
+    add(B, 0x1c1c2a, 0, 0.13, 0.355, 0.028); eyes(0.06, 0.2, 0.25);
+    const r = mulberry(9);
+    for (let i = 0; i < 26; i++) {
+      const a = r() * Math.PI * 2, u = 0.15 + r() * 0.8, sn = Math.sqrt(1 - u * u), x = Math.cos(a) * sn, z = Math.sin(a) * sn;
+      if (z > 0.55) continue;
+      const m = add(GEO.cone, i % 3 ? 0x6b432a : 0xa87850, x * 0.2, 0.17 + u * 0.17, -0.03 + z * 0.25, 0.04, 0.13, 0.04);
+      m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(x, u + 0.35, z - 0.25).normalize());
+    }
+    for (const [x, z] of [[0.11, 0.1], [-0.11, 0.1], [0.11, -0.14], [-0.11, -0.14]]) add(B, 0xf2d3a8, x, 0.03, z, 0.045, 0.03, 0.06);
+    add(B, 0xf2d3a8, 0.13, 0.27, 0.12, 0.04, 0.045, 0.02); add(B, 0xf2d3a8, -0.13, 0.27, 0.12, 0.04, 0.045, 0.02);
+  }
+  const hit = new THREE.Mesh(GEO.ballLow, own(new THREE.MeshBasicMaterial({ visible: false }))); hit.scale.setScalar(0.5); hit.position.y = 0.25; g.add(hit);
+  return { g, body, hit };
+}
+let animal = null;        // the garden's animal: { g, kind, excite, ... }
+function pokeAnimal() {
+  if (!animal || animal.excite > 0) return;
+  animal.excite = 1; audio();
+  if (animal.kind === 'duck') { tone(520, 0.11, 'sawtooth', 0.06, 0, 0.7); tone(480, 0.14, 'sawtooth', 0.06, 0.14, 0.65); }
+  else if (animal.kind === 'frog') { tone(160, 0.12, 'square', 0.06, 0, 1.6); tone(170, 0.14, 'square', 0.06, 0.15, 1.7); }
+  else if (animal.kind === 'tortoise' || animal.kind === 'snail') tone(300, 0.3, 'sine', 0.09, 0, 1.5);
+  else { tone(1200, 0.07, 'triangle', 0.07, 0, 1.3); tone(1500, 0.09, 'triangle', 0.07, 0.09, 1.2); }
+  const p = animal.g.position.clone(); p.y = -0.3; sparkle(p);
+}
+
 function buildLevel(i, opts = {}) {
   levelIndex = i;
   L = parseLevel(LEVELS[i].map);
@@ -979,6 +1069,55 @@ function buildLevel(i, opts = {}) {
   { // a little wooden sign with the garden number
     const sx = -(W / 2 + 0.75), sz = H / 2 + 0.75;
     const s = makeSign(i + 1, th); s.position.set(sx, GROUND, sz); s.rotation.y = 0.9; world.add(s);
+  }
+
+
+  // the garden's animal: it pootles between a few safe spots on the grass and likes being tapped
+  animal = null;
+  {
+    const kind = ANIMAL_ORDER[i % ANIMAL_ORDER.length], K = ANIMAL_KINDS[kind];
+    const clear = (x, z) => free(x, z, 0.32) && Math.hypot(x, z) < outR(Math.atan2(z, x)) * 0.9 && treeSpots.every((q) => Math.hypot(q[0] - x, q[1] - z) > 0.6);
+    const pathOk = (a, b) => { for (let k = 0; k <= 12; k++) { const q = k / 12; if (!clear(a[0] + (b[0] - a[0]) * q, a[1] + (b[1] - a[1]) * q)) return false; } return true; };
+    let home = null;
+    for (let n = 0; n < 40 && !home; n++) { const p = spot(0.32, 0.45, 0.85); if (p && clear(p[0], p[1])) home = p; }
+    if (home) {
+      const wp = [home];
+      for (let n = 0; n < 60 && wp.length < 4; n++) {
+        const last = wp[wp.length - 1], a = rnd() * Math.PI * 2, d = 1 + rnd() * 2.2, q = [last[0] + Math.cos(a) * d, last[1] + Math.sin(a) * d];
+        if (wp.every((w) => Math.hypot(w[0] - q[0], w[1] - q[1]) > 0.8) && pathOk(last, q)) wp.push(q);
+      }
+      const A = makeAnimal(kind);
+      Object.assign(A, { kind, wp, excite: 0, i: 0, step: 1, wait: 1.5 + rnd() * 2, move: null, yaw: Math.atan2(-home[0], -home[1]) }); A.base = A.yaw;
+      A.g.position.set(home[0], GROUND, home[1]); A.g.rotation.y = A.yaw; A.g.scale.setScalar(1.25); world.add(A.g); animal = A;
+      ambient.push({ tick: (t, dt) => {
+        let y = 0, roll = 0, sq = 0;
+        if (A.move) {
+          const m = A.move; m.s = Math.min(1, m.s + dt * K.speed / m.len);
+          A.g.position.x = m.a[0] + (m.b[0] - m.a[0]) * m.s; A.g.position.z = m.a[1] + (m.b[1] - m.a[1]) * m.s;
+          if (K.gait === 'hop') { const ph = (m.s * m.hops) % 1; y = Math.sin(ph * Math.PI) * K.hop; sq = ph < 0.12 || ph > 0.88 ? 0.12 : -0.06; }
+          else if (K.gait === 'waddle') { roll = Math.sin(t * 11) * 0.13; y = Math.abs(Math.sin(t * 11)) * 0.02; }
+          else sq = Math.sin(t * 5) * 0.05;
+          if (m.s >= 1) { A.move = null; A.wait = 1.5 + Math.random() * 3.5; }
+        } else {
+          sq = Math.sin(t * 2.2) * 0.025;                    // breathing
+          A.wait -= dt;
+          if (A.wait <= 0 && wp.length > 1 && !reduceMotion) {
+            if (A.i + A.step < 0 || A.i + A.step >= wp.length) A.step = -A.step;
+            const a = wp[A.i], b = wp[A.i + A.step]; A.i += A.step;
+            const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+            A.move = { a, b, len, s: 0, hops: Math.max(1, Math.round(len / (K.stride || 1))) };
+            A.yaw = Math.atan2(b[0] - a[0], b[1] - a[1]);
+          } else if (A.wait <= 0) A.wait = 3;
+        }
+        let spin = 0;
+        if (A.excite > 0) { A.excite = Math.max(0, A.excite - dt / 0.8); const e = 1 - A.excite; y += Math.sin(e * Math.PI) * 0.45; spin = easeOut(e) * Math.PI * 2; }
+        let d = A.yaw - A.base; d = Math.atan2(Math.sin(d), Math.cos(d));
+        A.base += d * (1 - Math.exp(-7 * dt));
+        A.g.rotation.y = A.base + spin;
+        A.g.position.y = GROUND + y; A.body.rotation.z = roll; A.body.scale.set(1 + sq * 0.6, 1 - sq, 1 + sq * 0.6);
+        if (kind === 'ladybird') A.body.scale.multiplyScalar(1.1);
+      } });
+    }
   }
 
   // clouds drifting around and below, and a few far-away islands
@@ -1450,7 +1589,7 @@ addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' && !docum
 const canvas = renderer.domElement;
 const pointers = new Map(); let pinch0 = 0, zoom0 = 1;
 canvas.addEventListener('pointerdown', (e) => {
-  canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY });
   if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); zoom0 = cam.targetZoom; }
   canvas.classList.add('dragging');
 });
@@ -1466,7 +1605,17 @@ canvas.addEventListener('pointermove', (e) => {
   }
   p.x = e.clientX; p.y = e.clientY;
 });
-const endPointer = (e) => { pointers.delete(e.pointerId); if (!pointers.size) { canvas.classList.remove('dragging'); } };
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+const endPointer = (e) => {
+  // a tap (not a drag) on the garden's animal makes it jump for joy
+  const p0 = pointers.get(e.pointerId);
+  if (p0 && animal && e.type === 'pointerup' && pointers.size === 1 && Math.hypot(e.clientX - p0.x0, e.clientY - p0.y0) < 10) {
+    const r = canvas.getBoundingClientRect();
+    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
+    if (ray.intersectObject(animal.hit, false).length) pokeAnimal();
+  }
+  pointers.delete(e.pointerId); if (!pointers.size) { canvas.classList.remove('dragging'); } };
 canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.targetZoom = THREE.MathUtils.clamp(cam.targetZoom * (1 + Math.sign(e.deltaY) * 0.1), 0.6, 1.6); }, { passive: false });
 
@@ -1540,7 +1689,7 @@ async function start(saved) {
   const ld = $('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 500);
   clock.start();
   requestAnimationFrame(frame);
-  window.__beep = { music, get audioState() { return actx ? actx.state : "none"; }, suspendAudio: () => actx.suspend(), tryStep, undo, buildLevel, play, showTitle, get state() { return { mode, level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
+  window.__beep = { music, get audioState() { return actx ? actx.state : "none"; }, suspendAudio: () => actx.suspend(), tryStep, undo, buildLevel, play, showTitle, pokeAnimal, camera, get animal() { return animal; }, animals: ANIMAL_ORDER, get state() { return { mode, level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
 }
 function replay(h) {
   // re-apply a saved step (used when the page updates while someone is playing)
