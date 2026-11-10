@@ -1,0 +1,6 @@
+{
+  "name": "crate-garden-build",
+  "private": true,
+  "scripts": { "build": "node build.js page.html && node app-build.js page.html ../index.html" },
+  "devDependencies": { "esbuild": "0.24.0", "three": "0.160.0" }
+}
