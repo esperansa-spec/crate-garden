@@ -1,189 +1,399 @@
 <title>Beep's Crate Garden</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;800&family=Nunito:wght@600;800&display=swap">
 <style>
-/* Layout: full-screen 3D world, HUD floats in the corners like a toy box lid. Single bright daytime look. */
+/* Layout: full-screen 3D world; the interface floats on top like chunky toy pieces.
+   Four garden moods (morning, noon, sunset, starlight) recolour the sky and the accent colour. */
+/*FONT*/
+@property --sky-top { syntax: '<color>'; inherits: true; initial-value: #4fb3f6; }
+@property --sky-mid { syntax: '<color>'; inherits: true; initial-value: #a5dcfb; }
+@property --sky-low { syntax: '<color>'; inherits: true; initial-value: #e6f8ff; }
 :root {
-  --sky-top: #7cc8f2;
-  --sky-low: #dff3ff;
-  --ink: #22304a;
-  --panel: rgba(255, 255, 255, 0.92);
-  --sun: #ffb21e;
-  --sun-deep: #e08e00;
-  --leaf: #3fae5f;
-  --leaf-deep: #2b8a47;
-  --berry: #ff5b6e;
-  --muted: #5d6b84;
-  --display: "Baloo 2", "Trebuchet MS", "Arial Rounded MT Bold", sans-serif;
-  --body: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --sky-top: #4fb3f6; --sky-mid: #a5dcfb; --sky-low: #e6f8ff;
+  --accent: #ffb21e; --accent-deep: #d98600;
+  --ink: #2b2a55;
+  --muted: #6f7396;
+  --panel: #ffffff;
+  --edge: rgba(43, 42, 85, 0.22);
+  --sun: #ffbf1f; --sun-deep: #e08e00;
+  --leaf: #39b85a; --leaf-deep: #23893f;
+  --berry: #ff5f7a; --berry-deep: #d63a57;
+  --star-off: #dcdff0;
+  --font: "Fredoka", "Baloo 2", "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
   color-scheme: light;
+  transition: --sky-top 1.2s, --sky-mid 1.2s, --sky-low 1.2s;
 }
 html, body { height: 100%; }
 [hidden] { display: none !important; }
 body {
-  margin: 0; overflow: hidden; font-family: var(--body); color: var(--ink);
-  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-low) 75%);
+  margin: 0; overflow: hidden; font-family: var(--font); font-weight: 500; color: var(--ink);
+  background: linear-gradient(180deg, var(--sky-top) 0%, var(--sky-mid) 55%, var(--sky-low) 100%);
   -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
-  touch-action: none;
+  touch-action: none; -webkit-font-smoothing: antialiased;
 }
 #stage { position: fixed; inset: 0; }
 #stage canvas { display: block; width: 100%; height: 100%; cursor: grab; }
 #stage canvas.dragging { cursor: grabbing; }
+svg.i { width: 1em; height: 1em; flex: none; display: block; }
 
-.hud { position: fixed; z-index: 5; display: flex; gap: 8px; align-items: center; }
+/* ---------- buttons ---------- */
+button { font: inherit; color: inherit; border: 0; cursor: pointer; padding: 0; background: none; }
+.btn {
+  --bg: var(--panel); --lip: var(--edge);
+  position: relative; background: var(--bg); color: var(--ink);
+  border-radius: 20px; min-height: 56px; min-width: 56px; padding: 0 18px;
+  font-weight: 600; font-size: 19px; letter-spacing: 0.01em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 5px 0 var(--lip), 0 10px 18px rgba(43, 42, 85, 0.16);
+  transition: transform 0.07s, box-shadow 0.07s, filter 0.15s;
+}
+.btn svg.i { font-size: 26px; }
+.btn:active, .btn.down { transform: translateY(4px); box-shadow: 0 1px 0 var(--lip), 0 3px 6px rgba(43, 42, 85, 0.16); }
+.btn:focus-visible { outline: 4px solid #fff; outline-offset: 2px; box-shadow: 0 5px 0 var(--lip), 0 0 0 8px var(--ink); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.round { border-radius: 50%; padding: 0; }
+.btn.green { --bg: var(--leaf); --lip: var(--leaf-deep); color: #fff; }
+.btn.sun { --bg: var(--sun); --lip: var(--sun-deep); color: #fff; }
+.btn.big { min-height: 72px; font-size: 28px; padding: 0 36px; border-radius: 26px; font-weight: 700; }
+.btn.big svg.i { font-size: 30px; }
+.btn .key {
+  font-size: 12px; font-weight: 600; color: var(--muted); border: 2px solid #d9dcec; border-bottom-width: 3px;
+  border-radius: 7px; padding: 0 6px; line-height: 18px; background: #fff;
+}
+.btn[aria-pressed="false"] { color: #a9adc6; }
+body.touch .key { display: none; }
+
+/* ---------- HUD ---------- */
+.hud { position: fixed; z-index: 5; display: flex; gap: 10px; align-items: center; transition: opacity 0.35s, transform 0.35s; }
+body.title .hud, body.title .tip { opacity: 0; pointer-events: none !important; }
+body.title .hud * { pointer-events: none !important; }
+body.title .top { transform: translateY(-30px); }
+body.title .dpad, body.title .turns { transform: translateY(30px); }
 .top {
-  top: calc(env(safe-area-inset-top, 0px) + 12px);
-  left: max(16px, env(safe-area-inset-left, 0px));
-  right: max(16px, env(safe-area-inset-right, 0px));
-  justify-content: space-between; flex-wrap: wrap; pointer-events: none;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  left: max(16px, env(safe-area-inset-left, 0px)); right: max(16px, env(safe-area-inset-right, 0px));
+  justify-content: space-between; align-items: flex-start; pointer-events: none;
 }
 .top > * { pointer-events: auto; }
-.badge {
-  background: var(--panel); border-radius: 18px; padding: 6px 16px 6px 8px;
-  display: flex; align-items: center; gap: 12px; box-shadow: 0 4px 0 rgba(34, 48, 74, 0.15);
+.info { display: flex; gap: 10px; flex-wrap: wrap; align-items: stretch; }
+.pill {
+  background: var(--panel); border-radius: 22px; padding: 8px 18px 8px 8px; min-height: 60px; box-sizing: border-box;
+  display: flex; align-items: center; gap: 12px;
+  box-shadow: 0 5px 0 var(--edge), 0 10px 18px rgba(43, 42, 85, 0.16);
 }
 .lvnum {
-  font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1;
-  background: var(--sun); color: #fff; border-radius: 12px; min-width: 40px; height: 40px;
-  display: grid; place-items: center; text-shadow: 0 2px 0 var(--sun-deep);
+  font-weight: 700; font-size: 26px; line-height: 1; color: #fff; background: var(--accent);
+  border-radius: 16px; min-width: 46px; height: 46px; display: grid; place-items: center;
+  box-shadow: inset 0 -4px 0 var(--accent-deep); text-shadow: 0 2px 0 var(--accent-deep);
+  transition: background 0.6s, box-shadow 0.6s;
 }
-.lvname { font-family: var(--display); font-weight: 800; font-size: 20px; line-height: 1.05; }
-.counts { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
-.counts b { color: var(--ink); }
+.lvname { font-weight: 600; font-size: 20px; line-height: 1.1; white-space: nowrap; }
+.homerow { display: flex; gap: 4px; margin-top: 5px; }
+.homerow i {
+  width: 18px; height: 18px; border-radius: 5px; box-sizing: border-box; display: block;
+  border: 2.5px solid #c9a06a; background: #f3dfc0; transition: background 0.25s, border-color 0.25s, transform 0.25s;
+}
+.homerow i.on { background: var(--sun); border-color: var(--sun-deep); transform: scale(1.12); }
+.score { padding: 6px 16px 6px 16px; gap: 14px; }
+.pushes { display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.pushes b { font-size: 30px; font-weight: 700; font-variant-numeric: tabular-nums; min-width: 1.3em; text-align: center; display: block; }
+.pushes b.tick { animation: tick 0.22s; }
+@keyframes tick { 40% { transform: scale(1.3); color: var(--accent-deep); } }
+.pushes span, .goal { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+.meter { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.stars3 { display: flex; gap: 2px; font-size: 24px; color: var(--sun); }
+.stars3 svg.i { transition: color 0.3s, transform 0.3s; filter: drop-shadow(0 2px 0 rgba(224, 142, 0, 0.55)); }
+.stars3 svg.off { color: var(--star-off); transform: scale(0.82); filter: none; }
+.goal { text-transform: none; letter-spacing: 0.01em; font-size: 13px; white-space: nowrap; }
+.goal b { color: var(--ink); }
 
-.btns { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
-button {
-  font: inherit; color: inherit; border: 0; cursor: pointer;
-  background: var(--panel); border-radius: 16px; min-height: 48px; min-width: 48px; padding: 0 14px;
-  font-family: var(--display); font-weight: 800; font-size: 17px;
-  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  box-shadow: 0 4px 0 rgba(34, 48, 74, 0.18); transition: transform 0.08s;
-}
-button:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(34, 48, 74, 0.18); }
-button:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
-button svg { width: 22px; height: 22px; flex: none; }
-button .key { font-family: var(--body); font-size: 11px; color: var(--muted); border: 1.5px solid #c9d3e2; border-radius: 6px; padding: 0 5px; }
+.btns { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 
-.bottom-right {
-  right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  flex-direction: column; align-items: flex-end;
-}
-.turnrow { display: flex; gap: 8px; }
-.turnrow button { width: 60px; height: 60px; border-radius: 50%; padding: 0; }
-.turnrow button svg { width: 30px; height: 30px; }
+.turns { right: max(16px, env(safe-area-inset-right, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px); }
+.turns .btn { width: 64px; height: 64px; }
+.turns .btn svg.i { font-size: 32px; }
+.turns .key { position: absolute; top: -6px; right: -4px; }
 
 .dpad {
-  left: max(16px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
-  display: grid; grid-template-columns: repeat(3, 64px); grid-template-rows: repeat(3, 64px); gap: 4px;
+  left: max(18px, env(safe-area-inset-left, 0px)); bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+  display: none; grid-template-columns: repeat(3, 72px); grid-template-rows: repeat(3, 72px); gap: 0;
+  padding: 6px; border-radius: 50%; background: rgba(255, 255, 255, 0.28); box-shadow: inset 0 0 0 3px rgba(255, 255, 255, 0.45);
 }
-.dpad button { width: 64px; height: 64px; padding: 0; border-radius: 18px; background: var(--sun); color: #fff; box-shadow: 0 5px 0 var(--sun-deep); }
-.dpad button svg { width: 34px; height: 34px; }
+body.touch .dpad { display: grid; }
+.dpad .btn { width: 66px; height: 66px; min-width: 0; min-height: 0; margin: 3px; padding: 0; border-radius: 22px; }
+.dpad .btn svg.i { font-size: 36px; }
 .dpad .u { grid-area: 1 / 2; } .dpad .l { grid-area: 2 / 1; } .dpad .r { grid-area: 2 / 3; } .dpad .d { grid-area: 3 / 2; }
+.dpad .hub { grid-area: 2 / 2; margin: auto; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, 0.6); }
 
 .tip {
   position: fixed; z-index: 4; left: 50%; transform: translateX(-50%);
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
-  background: var(--panel); border-radius: 14px; padding: 8px 14px; font-size: 14px; text-align: center;
-  max-width: min(560px, calc(100% - 32px)); box-sizing: border-box; transition: opacity 0.6s;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+  background: var(--ink); color: #fff; border-radius: 20px; padding: 12px 20px; font-size: 17px; line-height: 1.5; text-align: center;
+  max-width: min(520px, calc(100% - 32px)); box-sizing: border-box; transition: opacity 0.6s;
+  box-shadow: 0 10px 22px rgba(43, 42, 85, 0.3);
 }
-.tip kbd { font-family: var(--body); font-weight: 800; border: 1.5px solid #c9d3e2; border-bottom-width: 3px; border-radius: 6px; padding: 0 5px; background: #fff; }
+.tip kbd { font: inherit; font-weight: 600; font-size: 14px; border-radius: 7px; padding: 1px 7px; margin: 0 1px; background: #fff; color: var(--ink); box-shadow: 0 2px 0 #b9bdd8; }
+.tip b { color: var(--sun); font-weight: 600; }
+body.touch .tip { bottom: auto; top: calc(env(safe-area-inset-top, 0px) + 96px); }
 
+/* level name banner */
+.banner {
+  position: fixed; z-index: 6; left: 0; right: 0; top: 24%; text-align: center; pointer-events: none;
+  color: #fff; opacity: 0;
+}
+.banner.show { animation: banner 2.4s both; }
+@keyframes banner {
+  0% { opacity: 0; transform: translateY(18px) scale(0.9); } 12% { opacity: 1; transform: none; }
+  75% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-14px); }
+}
+.banner small {
+  display: inline-block; font-size: 18px; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase;
+  background: var(--accent); border-radius: 999px; padding: 4px 16px; box-shadow: 0 3px 0 var(--accent-deep);
+}
+.banner div { font-size: clamp(34px, 6.5vw, 60px); font-weight: 700; line-height: 1.1; margin-top: 8px; -webkit-text-stroke: 10px var(--ink); paint-order: stroke fill; text-shadow: 0 6px 0 var(--ink); }
+
+/* ---------- title screen ---------- */
+.title {
+  position: fixed; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: space-between;
+  padding: calc(env(safe-area-inset-top, 0px) + 4vh) 16px calc(env(safe-area-inset-bottom, 0px) + 5vh);
+  pointer-events: none; transition: opacity 0.4s;
+}
+.title > * { pointer-events: auto; }
+.title.out { opacity: 0; }
+.title.out > * { pointer-events: none; }
+.logo { text-align: center; line-height: 0.92; animation: logoIn 0.8s cubic-bezier(.2, 1.5, .4, 1) both; }
+@keyframes logoIn { from { transform: translateY(-40px) scale(0.7); opacity: 0; } }
+.logo .small {
+  display: inline-block; font-size: clamp(22px, 4vw, 38px); font-weight: 700; color: #fff; background: var(--berry);
+  padding: 8px 22px 9px; border-radius: 999px; transform: rotate(-4deg); box-shadow: 0 5px 0 var(--berry-deep); margin-bottom: 10px;
+}
+.logo .big {
+  display: block; font-size: clamp(50px, 10.5vw, 112px); font-weight: 700; color: #fff; letter-spacing: 0.005em;
+  -webkit-text-stroke: clamp(10px, 1.8vw, 18px) var(--ink); paint-order: stroke fill;
+  text-shadow: 0 clamp(6px, 1vw, 10px) 0 var(--ink);
+}
+.logo .big em { font-style: normal; color: var(--sun); }
+.title .actions { display: flex; flex-direction: column; align-items: center; gap: 14px; animation: actionsIn 0.6s 0.25s cubic-bezier(.2, 1.4, .4, 1) both; }
+@keyframes actionsIn { from { transform: translateY(40px); opacity: 0; } }
+.title .play { min-width: 240px; animation: breathe 1.8s 1.2s ease-in-out infinite; }
+@keyframes breathe { 50% { transform: scale(1.05); } }
+.title .play:active { animation: none; }
+.title .rowb { display: flex; gap: 12px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--panel); border-radius: 999px; padding: 6px 16px 6px 12px; white-space: nowrap;
+  font-weight: 600; font-size: 18px; box-shadow: 0 4px 0 var(--edge);
+}
+.chip svg.i { color: var(--sun); font-size: 22px; filter: drop-shadow(0 2px 0 rgba(224, 142, 0, 0.55)); }
+
+/* ---------- overlays / cards ---------- */
 .overlay {
-  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
-  background: rgba(34, 48, 74, 0.35);
-  padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
+  position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; overflow: auto;
+  background: rgba(43, 42, 85, 0.42); animation: fade 0.25s both;
+  padding: max(16px, env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) max(16px, env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+  box-sizing: border-box;
 }
+.overlay.soft { background: rgba(43, 42, 85, 0.12); place-items: end center; padding-bottom: max(4vh, calc(env(safe-area-inset-bottom, 0px) + 16px)); }
+@keyframes fade { from { opacity: 0; } }
 .card {
-  background: #fff; border-radius: 28px; padding: 24px; text-align: center; width: min(420px, 100%); box-sizing: border-box;
-  box-shadow: 0 8px 0 rgba(34, 48, 74, 0.2);
-  animation: pop 0.45s cubic-bezier(.2, 1.6, .4, 1);
+  position: relative; background: #fff; border-radius: 34px; padding: 26px; text-align: center; width: min(440px, 100%); box-sizing: border-box;
+  box-shadow: 0 9px 0 rgba(43, 42, 85, 0.25), 0 24px 50px rgba(43, 42, 85, 0.3);
+  animation: pop 0.45s cubic-bezier(.2, 1.5, .4, 1) both;
 }
-@keyframes pop { from { transform: scale(0.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-.card h2 { font-family: var(--display); font-weight: 800; font-size: 40px; margin: 0; line-height: 1; color: var(--leaf-deep); text-wrap: balance; }
-.card p { margin: 10px 0 18px; color: var(--muted); font-size: 16px; }
-.stars { font-size: 44px; letter-spacing: 6px; color: var(--sun); margin: 8px 0 0; line-height: 1; }
-.stars .off { color: #dfe5ee; }
-.card .go { background: var(--leaf); color: #fff; box-shadow: 0 5px 0 var(--leaf-deep); font-size: 22px; padding: 0 28px; min-height: 58px; }
-.card .row { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+@keyframes pop { from { transform: scale(0.6) translateY(30px); opacity: 0; } }
+.card h2 { font-weight: 700; font-size: 34px; margin: 0; line-height: 1.05; text-wrap: balance; }
+.card .row { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; }
+.card .btn { --bg: #eef0fa; --lip: #cfd3e8; box-shadow: 0 5px 0 var(--lip); }
+.card .btn:active { box-shadow: 0 1px 0 var(--lip); }
+.card .btn.green { --bg: var(--leaf); --lip: var(--leaf-deep); }
 
-.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-top: 16px; }
-.grid button { min-height: 64px; padding: 0; flex-direction: column; gap: 0; font-size: 24px; background: #f1f5fb; box-shadow: 0 4px 0 #d3dceb; }
-.grid button.hard { background: #ffe8ec; box-shadow: 0 4px 0 #f4c0ca; }
-.grid button.done { background: var(--sun); color: #fff; box-shadow: 0 4px 0 var(--sun-deep); }
-.grid button small { font-family: var(--body); font-size: 11px; letter-spacing: 2px; line-height: 1; }
-.grid button.cur { outline: 3px solid var(--leaf); outline-offset: 2px; }
-.credit { font-size: 12px; color: var(--muted); margin-top: 16px; }
+/* win card */
+.win { padding-top: 58px; margin-top: 40px; }
+.ribbon {
+  position: absolute; left: 50%; top: -30px; transform: translateX(-50%) rotate(-2deg); white-space: nowrap;
+  background: var(--berry); color: #fff; font-weight: 700; font-size: clamp(28px, 7vw, 38px); line-height: 1; padding: 14px 34px 16px; border-radius: 22px;
+  box-shadow: 0 6px 0 var(--berry-deep);
+}
+.winstars { display: flex; justify-content: center; align-items: flex-end; gap: 6px; color: var(--star-off); margin: 6px 0 4px; }
+.winstars svg.i { font-size: 78px; }
+.winstars svg.i:nth-child(2) { font-size: 100px; margin-bottom: 10px; }
+.winstars svg.on { color: var(--sun); filter: drop-shadow(0 5px 0 var(--sun-deep)); animation: starIn 0.5s cubic-bezier(.2, 1.8, .4, 1) both; }
+.winstars svg.on:nth-child(1) { animation-delay: 0.3s; } .winstars svg.on:nth-child(2) { animation-delay: 0.65s; } .winstars svg.on:nth-child(3) { animation-delay: 1s; }
+@keyframes starIn { from { transform: scale(0) rotate(-140deg); color: var(--star-off); filter: none; } }
+.wintext { font-size: 22px; font-weight: 600; margin: 8px 0 2px; }
+.wintext b { font-weight: 700; color: var(--leaf-deep); font-size: 26px; }
+.winhint { font-size: 16px; color: var(--muted); margin: 0 0 20px; min-height: 1.3em; }
+.newbest { display: inline-block; background: var(--sun); color: #fff; font-weight: 700; font-size: 15px; border-radius: 999px; padding: 2px 12px; margin-left: 6px; vertical-align: 3px; box-shadow: 0 3px 0 var(--sun-deep); animation: starIn 0.5s 1.3s cubic-bezier(.2, 1.8, .4, 1) both; }
+.win .row .btn.round { width: 60px; height: 60px; }
+
+/* gardens card */
+.gardens { width: min(640px, 100%); padding: 22px 22px 18px; }
+.gardens .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.gardens .head h2 { text-align: left; }
+.gardens .chip { box-shadow: none; background: #fff6d8; }
+.gardens .btn.close { width: 48px; height: 48px; min-width: 0; min-height: 0; }
+.zone { margin-top: 12px; border-radius: 22px; padding: 10px 12px 14px; background: var(--zbg); }
+.zone h3 { margin: 0 0 8px 4px; font-size: 16px; font-weight: 600; text-align: left; color: var(--zink); display: flex; gap: 8px; align-items: center; }
+.zone h3 span { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--zink); color: #fff; border-radius: 999px; padding: 1px 9px; }
+.grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+.grid .btn {
+  --bg: #fff; --lip: var(--zlip); min-width: 0; min-height: 68px; padding: 6px 0 4px; flex-direction: column; gap: 2px;
+  font-size: 26px; font-weight: 700; line-height: 1; border-radius: 18px;
+}
+.grid .btn .s { display: flex; gap: 1px; font-size: 15px; color: var(--star-off); }
+.grid .btn .s .on { color: var(--sun); }
+.grid .btn.done { --bg: var(--zc); --lip: var(--zdeep); color: #fff; text-shadow: 0 2px 0 var(--zdeep); }
+.grid .btn.done .s { color: rgba(255, 255, 255, 0.45); }
+.grid .btn.done .s .on { color: #fff3b0; }
+.grid .btn.cur { outline: 4px solid var(--ink); outline-offset: 2px; }
+.gardens .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+.gardens .foot .btn { min-height: 48px; font-size: 16px; padding: 0 14px; }
+.gardens .foot .btn svg.i { font-size: 22px; }
+.credit { font-size: 12px; color: var(--muted); margin-top: 12px; font-weight: 400; }
 .credit a { color: inherit; }
 
-#loading { position: fixed; inset: 0; display: grid; place-items: center; z-index: 20; font-family: var(--display); font-size: 28px; font-weight: 800; color: #fff; text-shadow: 0 3px 0 rgba(34, 48, 74, 0.3); }
-
-@media (max-width: 560px) {
-  .lvname { font-size: 17px; }
-  button .label, button .key { display: none; }
-  .dpad { grid-template-columns: repeat(3, 56px); grid-template-rows: repeat(3, 56px); }
-  .dpad button { width: 56px; height: 56px; }
-  .turnrow button { width: 54px; height: 54px; }
-  .tip { bottom: calc(env(safe-area-inset-bottom, 0px) + 200px); }
+/* ---------- loading ---------- */
+#loading {
+  position: fixed; inset: 0; display: grid; place-items: center; align-content: center; gap: 22px; z-index: 20;
+  background: linear-gradient(180deg, #4fb3f6, #e6f8ff); font-size: 26px; font-weight: 600; color: #fff; text-shadow: 0 3px 0 rgba(43, 42, 85, 0.3);
+  transition: opacity 0.5s;
 }
-@media (prefers-reduced-motion: reduce) { .card { animation: none; } }
+#loading i { width: 64px; height: 64px; border-radius: 16px; background: #e8a04c; border: 7px solid #b96f2c; box-sizing: border-box; animation: hop 0.7s cubic-bezier(.3, 0, .6, 1) infinite alternate; }
+@keyframes hop { from { transform: translateY(10px) scale(1.08, 0.9); } to { transform: translateY(-34px) rotate(12deg); } }
+
+/* ---------- small screens ---------- */
+@media (max-width: 860px) {
+  .btn .label, .btns .key { display: none; }
+  .btns .btn { padding: 0; }
+}
+@media (max-width: 640px), (max-height: 520px) {
+  .btn { min-height: 48px; min-width: 48px; border-radius: 16px; }
+  .btn svg.i { font-size: 22px; }
+  .btns { gap: 7px; max-width: 170px; }
+  .pill { min-height: 52px; border-radius: 18px; padding: 6px 12px 6px 6px; gap: 8px; }
+  .lvnum { min-width: 40px; height: 40px; font-size: 22px; border-radius: 13px; }
+  .lvname { font-size: 16px; }
+  .score { padding: 4px 12px; gap: 10px; }
+  .pushes b { font-size: 24px; }
+  .stars3 { font-size: 19px; }
+  .dpad { grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); }
+  .dpad .btn { width: 54px; height: 54px; border-radius: 18px; }
+  .turns .btn { width: 54px; height: 54px; }
+  .grid { gap: 7px; } .grid .btn { min-height: 56px; font-size: 22px; } .grid .btn .s { font-size: 12px; }
+  .gardens { padding: 16px 14px 14px; } .card h2 { font-size: 26px; }
+  .winstars svg.i { font-size: 60px; } .winstars svg.i:nth-child(2) { font-size: 78px; }
+}
+@media (max-height: 520px) {
+  .title { flex-direction: row; align-items: center; justify-content: space-around; }
+  .win { padding-top: 40px; } .winhint { margin-bottom: 12px; }
+  .zone { margin-top: 8px; padding: 6px 10px 10px; } .grid .btn { min-height: 46px; flex-direction: row; gap: 6px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card, .logo, .title .actions, .title .play, .winstars svg.on, .newbest, #loading i { animation: none; }
+}
 </style>
 
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-star" viewBox="0 0 24 24"><path fill="currentColor" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" d="m12 3.2 2.6 5.5 6 .8-4.4 4.2 1.1 6L12 16.8l-5.3 2.9 1.1-6-4.4-4.2 6-.8z"/></symbol>
+    <symbol id="i-undo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+    <symbol id="i-restart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.8-6.3L3.5 8"/><path d="M3.5 3.5V8H8"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24" fill="currentColor"><rect x="3" y="3" width="8" height="8" rx="2.5"/><rect x="13" y="3" width="8" height="8" rx="2.5"/><rect x="3" y="13" width="8" height="8" rx="2.5"/><rect x="13" y="13" width="8" height="8" rx="2.5"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l11-2v13"/><circle cx="6.2" cy="18" r="2.8" fill="currentColor"/><circle cx="17.2" cy="16" r="2.8" fill="currentColor"/></symbol>
+    <symbol id="i-sound" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2.5v6H6l5 4z" fill="currentColor"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.8 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
+    <symbol id="i-mute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2.5v6H6l5 4z" fill="currentColor"/><path d="m21.5 9.5-5 5"/><path d="m16.5 9.5 5 5"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" d="M8 5.5v13l10.5-6.5z"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3.5 3.5 11H6v8.5h4.5V15h3v4.5H18V11h2.5z"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path fill="currentColor" stroke="currentColor" stroke-width="3" stroke-linejoin="round" d="M12 6 5 16h14z"/></symbol>
+    <symbol id="i-turnl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 16a8 8 0 0 0-14.5-5"/><path d="M4.5 4.5v6.5H11"/></symbol>
+    <symbol id="i-turnr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16a8 8 0 0 1 14.5-5"/><path d="M19.500 4.500v6.500H13"/></symbol>
+  </defs>
+</svg>
+
 <div id="stage"></div>
-<div id="loading">Waking up Beep…</div>
+<div id="loading"><i></i><span>Waking up Beep…</span></div>
 
 <div class="hud top">
-  <div class="badge" aria-live="polite">
-    <div class="lvnum" id="lvnum">1</div>
-    <div>
-      <div class="lvname" id="lvname">Hello, Beep!</div>
-      <div class="counts">Pushes <b id="pushes">0</b> · Best for 3 stars <b id="par">0</b> · Crates home <b id="home">0/0</b></div>
+  <div class="info" aria-live="polite">
+    <div class="pill">
+      <div class="lvnum" id="lvnum">1</div>
+      <div>
+        <div class="lvname" id="lvname">Hello, Beep!</div>
+        <div class="homerow" id="homeRow" role="img" aria-label="Crates home"></div>
+      </div>
+    </div>
+    <div class="pill score">
+      <div class="pushes"><b id="pushes">0</b><span>pushes</span></div>
+      <div class="meter">
+        <div class="stars3" id="hudStars" role="img" aria-label="Stars"></div>
+        <div class="goal"><b id="par">0</b> for 3 stars</div>
+      </div>
     </div>
   </div>
   <div class="btns">
-    <button id="undoBtn" title="Undo (Z)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg><span class="label">Undo</span><span class="key">Z</span></button>
-    <button id="restartBtn" title="Start over (R)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg><span class="label">Start over</span><span class="key">R</span></button>
-    <button id="levelsBtn" title="Levels"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span class="label">Levels</span></button>
-    <button id="musicBtn" title="Music on or off (M)" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/><path id="musicSlash" d="M3 3l18 18" hidden/></svg></button>
-    <button id="soundBtn" title="Sound on or off" aria-pressed="true"><svg id="soundIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/></svg></button>
+    <button class="btn" id="undoBtn" title="Undo (Z)" aria-label="Undo"><svg class="i"><use href="#i-undo"/></svg><span class="label">Undo</span><span class="key">Z</span></button>
+    <button class="btn" id="restartBtn" title="Start over (R)" aria-label="Start over"><svg class="i"><use href="#i-restart"/></svg><span class="label">Again</span><span class="key">R</span></button>
+    <button class="btn" id="levelsBtn" title="Gardens" aria-label="Pick a garden"><svg class="i"><use href="#i-grid"/></svg><span class="label">Gardens</span></button>
+    <button class="btn round" id="soundBtn" title="Sound on or off" aria-label="Sound" aria-pressed="true"><svg class="i"><use id="soundUse" href="#i-sound"/></svg></button>
   </div>
 </div>
 
 <div class="hud dpad" id="dpad" aria-label="Walk">
-  <button class="u" data-dir="up" aria-label="Walk away"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 5 4 16h16z"/></svg></button>
-  <button class="l" data-dir="left" aria-label="Walk left"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M5 12 16 4v16z"/></svg></button>
-  <button class="r" data-dir="right" aria-label="Walk right"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 12 8 4v16z"/></svg></button>
-  <button class="d" data-dir="down" aria-label="Walk toward me"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 19 4 8h16z"/></svg></button>
+  <button class="btn sun u" data-dir="up" aria-label="Walk away"><svg class="i"><use href="#i-arrow"/></svg></button>
+  <button class="btn sun l" data-dir="left" aria-label="Walk left"><svg class="i" style="transform:rotate(-90deg)"><use href="#i-arrow"/></svg></button>
+  <button class="btn sun r" data-dir="right" aria-label="Walk right"><svg class="i" style="transform:rotate(90deg)"><use href="#i-arrow"/></svg></button>
+  <button class="btn sun d" data-dir="down" aria-label="Walk toward me"><svg class="i" style="transform:rotate(180deg)"><use href="#i-arrow"/></svg></button>
+  <div class="hub"></div>
 </div>
 
-<div class="hud bottom-right">
-  <div class="turnrow">
-    <button id="turnL" title="Turn view left (Q)" aria-label="Turn view left"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 15a8 8 0 0 0-14.3-5"/><path d="M5 4v6h6"/></svg></button>
-    <button id="turnR" title="Turn view right (E)" aria-label="Turn view right"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15a8 8 0 0 1 14.3-5"/><path d="M19 4v6h-6"/></svg></button>
+<div class="hud turns">
+  <button class="btn round" id="turnL" title="Turn view left (Q)" aria-label="Turn view left"><svg class="i"><use href="#i-turnl"/></svg><span class="key">Q</span></button>
+  <button class="btn round" id="turnR" title="Turn view right (E)" aria-label="Turn view right"><svg class="i"><use href="#i-turnr"/></svg><span class="key">E</span></button>
+</div>
+
+<div class="tip" id="tip" hidden></div>
+<div class="banner" id="banner"><small id="bannerNum">Garden 1</small><div id="bannerName">Hello, Beep!</div></div>
+
+<div class="title out" id="titleBox">
+  <h1 class="logo" style="margin:0"><span class="small">Beep's</span><span class="big">Crate <em>Garden</em></span></h1>
+  <div class="actions">
+    <button class="btn green big play" id="playBtn"><svg class="i"><use href="#i-play"/></svg><span id="playLabel">Play</span></button>
+    <div class="rowb">
+      <button class="btn" id="titleLevels"><svg class="i"><use href="#i-grid"/></svg>Gardens</button>
+      <span class="chip"><svg class="i"><use href="#i-star"/></svg><span id="titleStars">0 / 60</span></span>
+    </div>
   </div>
 </div>
 
-<div class="tip" id="tip">Walk with <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>. Push every crate onto a shiny coin pad! Drag or press <kbd>Q</kbd>/<kbd>E</kbd> to turn the view.</div>
-
-<div class="overlay" id="winBox" hidden>
-  <div class="card" role="dialog" aria-labelledby="winTitle">
-    <h2 id="winTitle">Hooray!</h2>
-    <div class="stars" id="winStars"></div>
-    <p id="winText">All crates are home.</p>
+<div class="overlay soft" id="winBox" hidden>
+  <div class="card win" role="dialog" aria-labelledby="winTitle">
+    <div class="ribbon" id="winTitle">Hooray!</div>
+    <div class="winstars" id="winStars"></div>
+    <p class="wintext" id="winText"></p>
+    <p class="winhint" id="winHint"></p>
     <div class="row">
-      <button id="replayBtn">Play again</button>
-      <button class="go" id="nextBtn">Next garden</button>
+      <button class="btn round" id="winLevels" aria-label="Pick a garden" title="Gardens"><svg class="i"><use href="#i-grid"/></svg></button>
+      <button class="btn round" id="replayBtn" aria-label="Play this garden again" title="Play again"><svg class="i"><use href="#i-restart"/></svg></button>
+      <button class="btn green big" id="nextBtn"><span id="nextLabel">Next</span><svg class="i"><use href="#i-play"/></svg></button>
     </div>
   </div>
 </div>
 
 <div class="overlay" id="levelBox" hidden>
-  <div class="card" role="dialog" aria-labelledby="lvTitle">
-    <h2 id="lvTitle" style="color:var(--ink)">Pick a garden</h2>
-    <div class="grid" id="levelGrid"></div>
-    <p style="margin:12px 0 0;font-size:14px">Pink gardens 11 to 20 are the tricky ones. Think before you push!</p>
-    <div class="row" style="margin-top:18px"><button id="closeLevels">Back to play</button></div>
-    <div class="credit">3D models: Kenney Starter Kit 3D Platformer (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0</a>). Gardens and game: original.</div>
+  <div class="card gardens" role="dialog" aria-labelledby="lvTitle">
+    <div class="head">
+      <h2 id="lvTitle">Pick a garden</h2>
+      <span class="chip"><svg class="i"><use href="#i-star"/></svg><span id="gridStars">0 / 60</span></span>
+      <button class="btn round close" id="closeLevels" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button>
+    </div>
+    <div id="levelGrid"></div>
+    <div class="foot">
+      <div class="row">
+        <button class="btn" id="musicBtn" title="Music on or off (M)" aria-pressed="true"><svg class="i"><use href="#i-music"/></svg>Music</button>
+        <button class="btn" id="soundBtn2" aria-pressed="true"><svg class="i"><use id="soundUse2" href="#i-sound"/></svg>Sound</button>
+      </div>
+      <button class="btn" id="homeBtn"><svg class="i"><use href="#i-home"/></svg>Title</button>
+    </div>
+    <div class="credit">Robot and coin models: Kenney Starter Kit 3D Platformer (<a href="https://creativecommons.org/publicdomain/zero/1.0/" target="_blank" rel="noopener">CC0</a>). Font: Fredoka (OFL). Gardens, game and music: original.</div>
   </div>
 </div>
 
@@ -193,9 +403,12 @@ button .key { font-family: var(--body); font-size: 11px; color: var(--muted); bo
 <script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const $ = (id) => document.getElementById(id);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const STAR = '<svg class="i"><use href="#i-star"/></svg>';
 
 // ---------- storage (per-viewer convenience only) ----------
 const store = {
@@ -252,6 +465,10 @@ const sfx = {
   home() { [784, 988, 1319].forEach((f, i) => tone(f, 0.18, 'triangle', 0.09, i * 0.07)); },
   undo() { tone(660, 0.08, 'sine', 0.06, 0, 0.6); },
   win() { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, i === 5 ? 0.5 : 0.16, 'triangle', 0.1, i * 0.11)); },
+  star(n) { tone([880, 1109, 1319][n], 0.3, 'triangle', 0.11); tone([1760, 2217, 2637][n], 0.25, 'sine', 0.04, 0.03); },
+  click() { tone(700, 0.06, 'triangle', 0.06, 0, 1.4); },
+  land() { tone(180, 0.09, 'sine', 0.07, 0, 0.6); },
+  whoosh() { tone(300, 0.35, 'sine', 0.05, 0, 2.2); },
 };
 // ---------- background music: an original looping tune, synthesised live ----------
 // C - Am - F - G, 112 bpm, eighth-note grid. -1 = rest.
@@ -324,14 +541,16 @@ const music = {
     }
   },
 };
-function paintMusic() {
+function paintAudio() {
   $('musicBtn').setAttribute('aria-pressed', String(musicOn && soundOn));
-  $('musicSlash').hidden = musicOn && soundOn;
+  for (const id of ['soundBtn', 'soundBtn2']) $(id).setAttribute('aria-pressed', String(soundOn));
+  for (const id of ['soundUse', 'soundUse2']) $(id).setAttribute('href', soundOn ? '#i-sound' : '#i-mute');
 }
 function setMusic(on) {
-  musicOn = on; store.set('music', on); paintMusic();
+  musicOn = on; store.set('music', on); paintAudio();
   if (on) audio(); else music.stop();
 }
+function toggleSound() { soundOn = !soundOn; store.set('sound', soundOn); paintAudio(); if (soundOn) { audio(); sfx.click(); } else music.stop(); }
 function onShow() { if (actx && soundOn && actx.state !== 'running') actx.resume().catch(() => {}); }
 document.addEventListener('visibilitychange', () => {
   if (!actx) return;
@@ -340,12 +559,34 @@ document.addEventListener('visibilitychange', () => {
 addEventListener('pageshow', onShow);
 addEventListener('focus', onShow);
 
-function paintSound() {
-  $('soundBtn').setAttribute('aria-pressed', String(soundOn));
-  $('soundIcon').innerHTML = soundOn
-    ? '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M19 5a10 10 0 0 1 0 14"/>'
-    : '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="m22 9-6 6"/><path d="m16 9 6 6"/>';
-}
+// ---------- garden moods: the day goes by as the gardens get harder ----------
+const THEMES = [
+  { name: 'Morning Meadow', tag: '', sky: ['#4fb3f6', '#a5dcfb', '#e6f8ff'], accent: ['#ffb21e', '#d98600'],
+    ui: { bg: '#e9f6ff', c: '#3ba4ee', deep: '#1f7fc4', ink: '#1f6fae', lip: '#bcdcf2' },
+    sun: 0xfff2d8, sunI: 2.5, sunDir: [6, 13, 8], hemi: [0xdaf0ff, 0x8fc27a, 1.45], fog: 0xcfeeff,
+    grass: ['#86d86a', '#74cc5c', '#9be37c'], dirt: 0xa7714a, rock: 0x8b6248, hedge: [0x3fae5a, 0x55c26a], tile: [0xfbeccb, 0xf2dcae],
+    leaf: [0x4fc267, 0x3aa957, 0x6fd47c], trunk: 0x9a6a43, fruit: 0, tree: 'round', cloud: 0xffffff,
+    flowers: [0xffffff, 0xff7a93, 0xffd23f, 0xb48cff], critter: 'butterfly' },
+  { name: 'Sunny Orchard', tag: '', sky: ['#22a6ea', '#7fd8f0', '#d8f8e6'], accent: ['#ff8a3c', '#d9601a'],
+    ui: { bg: '#fff1e0', c: '#ff9a3c', deep: '#d96f1a', ink: '#c2600f', lip: '#f5d5b0' },
+    sun: 0xffedc0, sunI: 2.8, sunDir: [-7, 14, 6], hemi: [0xd8f6ff, 0x9fcf6a, 1.4], fog: 0xc4f0ee,
+    grass: ['#9bdc55', '#88cf48', '#b2ea6a'], dirt: 0xb07a45, rock: 0x94683f, hedge: [0x48b04a, 0x6cc650], tile: [0xfff0d0, 0xf7dcaa],
+    leaf: [0x5cc24a, 0x46ab3c, 0x7fd45c], trunk: 0x8f5f3a, fruit: 0xff4f4f, tree: 'round', cloud: 0xffffff,
+    flowers: [0xffffff, 0xffa53f, 0xff6b6b, 0xffe14f], critter: 'butterfly' },
+  { name: 'Sunset Terrace', tag: 'Tricky', sky: ['#7c6ad8', '#ff9d8c', '#ffdc9c'], accent: ['#ff5f7a', '#d63a57'],
+    ui: { bg: '#ffe9ee', c: '#ff6f8a', deep: '#d64463', ink: '#c23556', lip: '#f6c3ce' },
+    sun: 0xffdcb4, sunI: 2.6, sunDir: [9, 9, 5], hemi: [0xffe2dc, 0xa9b877, 1.4], fog: 0xffc9a8,
+    grass: ['#8fd45e', '#7cc552', '#a8e070'], dirt: 0xb0704a, rock: 0x8f5a48, hedge: [0x4fae4e, 0x74c452], tile: [0xfff0d6, 0xfbdcb4],
+    leaf: [0xff9db5, 0xff7f9f, 0xffbccb], trunk: 0x7d5038, fruit: 0, tree: 'round', cloud: 0xffe6da,
+    flowers: [0xffffff, 0xff8fb0, 0xffb347, 0xc48cff], critter: 'butterfly' },
+  { name: 'Starlight Grove', tag: 'Trickiest', sky: ['#141a52', '#3a3a94', '#7a5cc0'], accent: ['#8a6cff', '#5f43d6'],
+    ui: { bg: '#ece8ff', c: '#8a6cff', deep: '#6145d8', ink: '#5a3fd0', lip: '#cbc2f5' },
+    sun: 0xf0f0ff, sunI: 2.4, sunDir: [-6, 13, 7], hemi: [0xc4c8ff, 0x5a7a8a, 1.7], fog: 0x4a429c,
+    grass: ['#4fb98f', '#42a982', '#62cba0'], dirt: 0x6a567a, rock: 0x524468, hedge: [0x2f9278, 0x44ac8c], tile: [0xe6e2f7, 0xcfc9ee],
+    leaf: [0x2f9a86, 0x268674, 0x3db39a], trunk: 0x5c4a66, fruit: 0, tree: 'pine', cloud: 0x8f88d8,
+    flowers: [0xffffff, 0x9fe8ff, 0xffe88a, 0xd9a8ff], critter: 'firefly' },
+];
+const themeOf = (i) => THEMES[Math.min(THEMES.length - 1, Math.floor(i / 5))];
 
 // ---------- renderer / scene ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -353,19 +594,31 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
 $('stage').appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 200);
-scene.add(new THREE.HemisphereLight(0xdff3ff, 0x6d8a5a, 1.6));
+scene.fog = new THREE.Fog(0xcfeeff, 30, 80);
+const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+const hemi = new THREE.HemisphereLight(0xdff3ff, 0x6d8a5a, 1.5);
 const sun = new THREE.DirectionalLight(0xfff1d6, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
-sun.shadow.bias = -0.0008;
-sun.shadow.normalBias = 0.02;
-scene.add(sun, sun.target);
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.03;
+sun.shadow.radius = 3;
+scene.add(hemi, sun, sun.target);
+
+// stars for the night gardens (the camera looks down, so they sit all around)
+const starField = (() => {
+  const n = 420, pos = new Float32Array(n * 3), r = mulberry(7);
+  for (let i = 0; i < n; i++) {
+    const u = r() * 2 - 1, a = r() * Math.PI * 2, s = Math.sqrt(1 - u * u);
+    pos.set([Math.cos(a) * s * 170, u * 170, Math.sin(a) * s * 170], i * 3);
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const p = new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 2.2, sizeAttenuation: false, transparent: true, opacity: 0.9, fog: false, depthWrite: false }));
+  p.visible = false; scene.add(p); return p;
+})();
 
 // ---------- assets ----------
 const b64buf = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0)).buffer;
@@ -375,7 +628,7 @@ palette.magFilter = THREE.NearestFilter; palette.minFilter = THREE.NearestFilter
 const models = {};
 async function loadModels() {
   const loader = new GLTFLoader();
-  for (const name of ['character', 'brick', 'block-coin', 'coin', 'grass', 'grass-small', 'flag', 'cloud']) {
+  for (const name of ['character', 'coin']) {
     const g = await loader.parseAsync(b64buf(ASSETS[name]), '');
     g.scene.traverse((o) => {
       if (o.isMesh) { o.material.map = palette; o.material.needsUpdate = true; o.castShadow = true; o.receiveShadow = true; }
@@ -385,22 +638,121 @@ async function loadModels() {
 }
 const cloneModel = (name) => models[name].scene.clone(true);
 
+// ---------- painted textures ----------
+function canvasTex(size, draw) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function starPath(g, x, y, R, r = R * 0.5) {
+  g.beginPath();
+  for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r : R; g[i ? 'lineTo' : 'moveTo'](x + Math.cos(a) * q, y + Math.sin(a) * q); }
+  g.closePath();
+}
+function rr(g, x, y, w, h, r) { g.beginPath(); g.roundRect ? g.roundRect(x, y, w, h, r) : g.rect(x, y, w, h); }
+function crateTex(c) {
+  return canvasTex(256, (g, S) => {
+    g.fillStyle = c.frame; g.fillRect(0, 0, S, S);
+    // planks
+    const m = 30; g.fillStyle = c.plank; g.fillRect(m, m, S - 2 * m, S - 2 * m);
+    g.strokeStyle = c.gap; g.lineWidth = 5;
+    for (let i = 1; i < 4; i++) { const y = m + (S - 2 * m) * i / 4; g.beginPath(); g.moveTo(m, y); g.lineTo(S - m, y); g.stroke(); }
+    // soft wood grain
+    g.globalAlpha = 0.18; g.strokeStyle = c.gap; g.lineWidth = 2;
+    const r = mulberry(5);
+    for (let i = 0; i < 26; i++) { const x = m + r() * (S - 2 * m - 40), y = m + r() * (S - 2 * m); g.beginPath(); g.moveTo(x, y); g.lineTo(x + 20 + r() * 30, y); g.stroke(); }
+    g.globalAlpha = 1;
+    // frame highlight, inner shade and corner bolts
+    g.strokeStyle = c.hi; g.lineWidth = 6; g.strokeRect(5, 5, S - 10, S - 10);
+    g.strokeStyle = c.gap; g.lineWidth = 5; g.strokeRect(m, m, S - 2 * m, S - 2 * m);
+    g.fillStyle = c.gap; for (const [x, y] of [[15, 15], [S - 15, 15], [15, S - 15], [S - 15, S - 15]]) { g.beginPath(); g.arc(x, y, 5, 0, 7); g.fill(); }
+    // star badge
+    g.lineJoin = 'round'; starPath(g, S / 2, S / 2 + 4, 62);
+    g.strokeStyle = c.starEdge; g.lineWidth = 16; g.stroke(); g.fillStyle = c.star; g.fill();
+  });
+}
+const crateWood = crateTex({ frame: '#c77a34', hi: '#e39a4f', plank: '#f0aa55', gap: '#a55f24', star: '#fff3d6', starEdge: '#b96a26' });
+const crateHome = crateTex({ frame: '#f09a00', hi: '#ffd45e', plank: '#ffcf3a', gap: '#d07f00', star: '#ffffff', starEdge: '#e08a00' });
+const padTex = canvasTex(256, (g, S) => {
+  const c = S / 2;
+  g.fillStyle = 'rgba(255, 214, 80, 0.5)'; g.beginPath(); g.arc(c, c, 104, 0, 7); g.fill();
+  g.strokeStyle = '#ffffff'; g.lineWidth = 16; g.beginPath(); g.arc(c, c, 104, 0, 7); g.stroke();
+  g.strokeStyle = '#ffb21e'; g.lineWidth = 8; g.setLineDash([26, 18]); g.beginPath(); g.arc(c, c, 82, 0, 7); g.stroke(); g.setLineDash([]);
+  g.lineJoin = 'round'; starPath(g, c, c + 3, 46); g.fillStyle = '#ffffff'; g.fill();
+});
+const leafTex = canvasTex(128, (g, S) => {       // soft speckle, multiplied with the leaf colour
+  g.fillStyle = '#f2f2f2'; g.fillRect(0, 0, S, S);
+  const r = mulberry(11);
+  for (let i = 0; i < 90; i++) { g.fillStyle = r() < 0.5 ? 'rgba(255,255,255,0.9)' : 'rgba(170,190,170,0.5)'; g.beginPath(); g.ellipse(r() * S, r() * S, 4 + r() * 5, 3 + r() * 3, r() * 3, 0, 7); g.fill(); }
+});
+leafTex.wrapS = leafTex.wrapT = THREE.RepeatWrapping;
+const grassTexCache = new Map();
+function grassTex(th) {
+  if (!grassTexCache.has(th)) {
+    const t = canvasTex(256, (g, S) => {
+      g.fillStyle = th.grass[0]; g.fillRect(0, 0, S, S);
+      const r = mulberry(3);
+      for (let i = 0; i < 60; i++) {
+        g.fillStyle = th.grass[1 + (i % 2)]; g.globalAlpha = 0.5;
+        const x = r() * S, y = r() * S, w = 14 + r() * 26;
+        for (const [ox, oy] of [[0, 0], [S, 0], [-S, 0], [0, S], [0, -S]]) { g.beginPath(); g.ellipse(x + ox, y + oy, w, w * 0.7, r() * 3, 0, 7); g.fill(); }
+      }
+      g.globalAlpha = 0.55;
+      for (let i = 0; i < 160; i++) { g.fillStyle = th.grass[2]; const x = r() * S, y = r() * S; g.fillRect(x, y, 3, 7); }
+    });
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    grassTexCache.set(th, t);
+  }
+  return grassTexCache.get(th);
+}
+
+// ---------- shared shapes ----------
+const col = (hex, geo) => {      // paint a geometry one colour (for merged, vertex-coloured props)
+  const g = geo.index ? geo.toNonIndexed() : geo, c = new THREE.Color(hex), n = g.attributes.position.count, a = new Float32Array(n * 3);
+  for (let i = 0; i < n; i++) a.set([c.r, c.g, c.b], i * 3);
+  g.setAttribute('color', new THREE.BufferAttribute(a, 3)); return g;
+};
+const at = (geo, x, y, z, sx = 1, sy = sx, sz = sx) => geo.scale(sx, sy, sz).translate(x, y, z);
+const ball = (d = 2) => new THREE.IcosahedronGeometry(1, d);
+const GEO = {
+  tile: new RoundedBoxGeometry(0.95, 0.22, 0.95, 2, 0.05),
+  hedge: new RoundedBoxGeometry(1.02, 0.52, 1.02, 4, 0.18),
+  crate: new RoundedBoxGeometry(0.8, 0.8, 0.8, 3, 0.07),
+  pad: new THREE.PlaneGeometry(0.92, 0.92).rotateX(-Math.PI / 2),
+  ball: ball(2), ballLow: ball(1),
+  trunk: new THREE.CylinderGeometry(0.07, 0.12, 0.5, 7).translate(0, 0.25, 0),
+  cone: new THREE.ConeGeometry(1, 1, 9),
+  rockBit: new THREE.DodecahedronGeometry(1, 0),
+  tuft: mergeGeometries([at(col(0xffffff, new THREE.ConeGeometry(0.05, 0.3, 4)), 0, 0.15, 0), at(col(0xffffff, new THREE.ConeGeometry(0.045, 0.22, 4)), 0.07, 0.1, 0.02).rotateZ(-0.25), at(col(0xffffff, new THREE.ConeGeometry(0.045, 0.2, 4)), -0.07, 0.09, -0.02).rotateZ(0.25)]),
+  flowerBase: mergeGeometries([at(col(0x3f9f4f, new THREE.CylinderGeometry(0.015, 0.02, 0.2, 5)), 0, 0.1, 0), at(col(0xffd23f, ball(1)), 0, 0.215, 0, 0.04, 0.03, 0.04)]),
+  petals: mergeGeometries([0, 1, 2, 3, 4].map((i) => at(col(0xffffff, ball(1)), Math.cos(i * 1.2566) * 0.062, 0.205, Math.sin(i * 1.2566) * 0.062, 0.045, 0.018, 0.045))),
+  mushroom: mergeGeometries([at(col(0xfff4e0, new THREE.CylinderGeometry(0.045, 0.06, 0.14, 7)), 0, 0.07, 0), at(col(0xff5a5a, new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2)), 0, 0.12, 0, 0.13, 0.1, 0.13),
+    ...[[0.06, 0.19, 0.04], [-0.05, 0.2, -0.03], [0, 0.215, 0.02], [0.02, 0.18, -0.09], [-0.08, 0.17, 0.06]].map(([x, y, z]) => at(col(0xffffff, ball(0)), x, y, z, 0.022))]),
+  cloud: mergeGeometries([[0, 0, 0, 1], [0.95, -0.1, 0.1, 0.72], [-0.95, -0.12, -0.05, 0.68], [0.4, 0.38, -0.15, 0.62], [-0.45, 0.3, 0.2, 0.58], [1.6, -0.25, 0, 0.42], [-1.55, -0.26, 0.1, 0.4]].map(([x, y, z, s]) => at(ball(2), x, y * 1, z, s, s * 0.62, s * 0.8))),
+  wing: new THREE.ShapeGeometry(new THREE.Shape().moveTo(0, 0).quadraticCurveTo(0.16, 0.18, 0.2, 0.04).quadraticCurveTo(0.2, -0.05, 0.1, -0.03).quadraticCurveTo(0.17, -0.14, 0.06, -0.14).quadraticCurveTo(0, -0.1, 0, 0)).rotateX(-Math.PI / 2),
+  spark: new THREE.OctahedronGeometry(0.07),
+  conf: new THREE.PlaneGeometry(0.13, 0.08),
+  ring: new THREE.RingGeometry(0.42, 0.5, 40).rotateX(-Math.PI / 2),
+  puff: ball(1),
+};
+
 // ---------- world building ----------
 const world = new THREE.Group(); scene.add(world);
-const tileMatA = new THREE.MeshStandardMaterial({ color: 0xf6e7c3, roughness: 0.9 });
-const tileMatB = new THREE.MeshStandardMaterial({ color: 0xeedbb0, roughness: 0.9 });
-const tileGeo = new THREE.BoxGeometry(0.96, 0.24, 0.96);
-const padGeo = new THREE.CylinderGeometry(0.36, 0.38, 0.05, 32);
-const padRingGeo = new THREE.TorusGeometry(0.33, 0.035, 8, 40);
-const ambientBits = [];   // clouds etc. animated each frame
+const ambient = [];       // things animated each frame: { tick(t, dt) }
+const owned = [];         // per-level geometries / materials to free when the garden changes
+const own = (x) => { owned.push(x); return x; };
+const M = (color, o = {}) => own(new THREE.MeshStandardMaterial({ color, roughness: 0.9, metalness: 0, ...o }));
 
 let L = null;             // current level data
 let levelIndex = 0;
+let theme = THEMES[0];
 let player = null;        // { gx, gy, obj, ... }
-let crates = [];          // { gx, gy, obj, mats, glow }
-let pads = [];            // { gx, gy, coin, ring }
+let crates = [];          // { key, obj, mat, glow }
+let pads = [];            // { key, coin, decal }
 let history = [];
 let steps = 0, pushes = 0, won = false;
+let mode = 'title';       // 'title' | 'play'
+let intro = 1;            // 0..1 island rise-in
 
 function parseLevel(map) {
   const H = map.length, W = Math.max(...map.map((r) => r.length));
@@ -421,87 +773,256 @@ function parseLevel(map) {
       const n = ny * W + nx; if (walls.has(n) || floor.has(n)) continue; floor.add(n); stack.push(n);
     }
   }
-  return { W, H, walls, goals, boxes, p, floor };
+  // hedges = walls that touch the floor (also diagonally)
+  const hedges = new Set();
+  for (const k of walls) {
+    const x = k % W, y = (k / W) | 0;
+    search: for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      if (floor.has(ny * W + nx)) { hedges.add(k); break search; }
+    }
+  }
+  return { W, H, walls, goals, boxes, p, floor, hedges };
 }
 
 const cx = (gx) => gx - (L.W - 1) / 2;
 const cz = (gy) => gy - (L.H - 1) / 2;
+const GROUND = -0.1;      // top of the grass; path tiles stand a little proud of it
 
 function clearWorld() {
   while (world.children.length) world.remove(world.children[0]);
-  ambientBits.length = 0;
+  for (const o of owned) o.dispose();
+  owned.length = 0; ambient.length = 0;
+  for (const f of fx) if (f.own) f.m.material.dispose();
+  fx.length = 0;
 }
 
-function buildLevel(i) {
+function applyTheme(th) {
+  theme = th;
+  const s = document.documentElement.style;
+  s.setProperty('--sky-top', th.sky[0]); s.setProperty('--sky-mid', th.sky[1]); s.setProperty('--sky-low', th.sky[2]);
+  s.setProperty('--accent', th.accent[0]); s.setProperty('--accent-deep', th.accent[1]);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', th.sky[0]);
+  hemi.color.set(th.hemi[0]); hemi.groundColor.set(th.hemi[1]); hemi.intensity = th.hemi[2];
+  sun.color.set(th.sun); sun.intensity = th.sunI;
+  sun.position.set(...th.sunDir); sun.target.position.set(0, 0, 0);
+  scene.fog.color.set(th.fog);
+  starField.visible = th.critter === 'firefly';
+}
+
+// the island outline: a soft, slightly wobbly rounded rectangle around the garden
+function makeOutline(W, H, rnd) {
+  const ax = W / 2 + 1.75, az = H / 2 + 1.75, p1 = rnd() * 6, p2 = rnd() * 6;
+  return (a) => Math.pow(Math.pow(Math.abs(Math.cos(a)) / ax, 3.4) + Math.pow(Math.abs(Math.sin(a)) / az, 3.4), -1 / 3.4) * (1 + 0.035 * Math.sin(3 * a + p1) + 0.022 * Math.sin(5 * a + p2));
+}
+function buildIsland(outR, th, rnd) {
+  const N = 80, pts = [];
+  for (let i = 0; i < N; i++) { const a = (i / N) * Math.PI * 2, r = outR(a); pts.push([Math.cos(a) * r, Math.sin(a) * r]); }
+  const shape = (k) => new THREE.Shape(pts.map(([x, z]) => new THREE.Vector2(x * k, -z * k)));
+  // grass cap with a rounded lip
+  const grass = own(new THREE.ExtrudeGeometry(shape(1), { depth: 0.2, bevelEnabled: true, bevelThickness: 0.1, bevelSize: 0.1, bevelSegments: 3, curveSegments: 1 }));
+  grass.rotateX(-Math.PI / 2).translate(0, GROUND - 0.3, 0);
+  const gp = grass.attributes.position, uv = grass.attributes.uv;
+  for (let i = 0; i < gp.count; i++) uv.setXY(i, gp.getX(i) * 0.22, gp.getZ(i) * 0.22);
+  const top = new THREE.Mesh(grass, M(0xffffff, { map: grassTex(th), roughness: 1 })); top.receiveShadow = true;
+  // soil band
+  const soilGeo = own(new THREE.ExtrudeGeometry(shape(1.0), { depth: 0.55, bevelEnabled: false, curveSegments: 1 }));
+  soilGeo.rotateX(-Math.PI / 2).translate(0, GROUND - 0.9, 0);
+  const soil = new THREE.Mesh(soilGeo, M(th.dirt, { roughness: 1 }));
+  // chunky rock underneath, tapering to a point
+  const K = 6, RN = 20, depth = Math.max(L.W, L.H) * 0.55 + 2.2, pos = [], colr = [], idx = [];
+  const base = new THREE.Color(th.rock);
+  for (let k = 0; k < K; k++) {
+    const t = k / K, s = Math.pow(1 - t, 0.62) * (k ? 0.97 : 1.0);
+    for (let j = 0; j < RN; j++) {
+      const a = (j / RN) * Math.PI * 2 + (k % 2) * (Math.PI / RN), r = outR(a) * s * (k ? 0.9 + rnd() * 0.16 : 1);
+      pos.push(Math.cos(a) * r, GROUND - 0.85 - t * depth - (k ? rnd() * 0.3 : 0), Math.sin(a) * r);
+      const c = base.clone().multiplyScalar(1.08 - t * 0.5 + rnd() * 0.1); colr.push(c.r, c.g, c.b);
+    }
+  }
+  pos.push(rnd() - 0.5, GROUND - 0.85 - depth, rnd() - 0.5); const tipC = base.clone().multiplyScalar(0.5); colr.push(tipC.r, tipC.g, tipC.b);
+  for (let k = 0; k < K - 1; k++) for (let j = 0; j < RN; j++) {
+    const a = k * RN + j, b = k * RN + (j + 1) % RN, c = a + RN, d = b + RN;
+    if (k % 2) idx.push(a, b, c, b, d, c); else idx.push(a, b, d, a, d, c);
+  }
+  for (let j = 0; j < RN; j++) idx.push((K - 1) * RN + j, (K - 1) * RN + (j + 1) % RN, K * RN);
+  const rg = own(new THREE.BufferGeometry());
+  rg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); rg.setAttribute('color', new THREE.Float32BufferAttribute(colr, 3)); rg.setIndex(idx);
+  rg.computeVertexNormals();
+  const rock = new THREE.Mesh(rg, M(0xffffff, { vertexColors: true, flatShading: true, side: THREE.DoubleSide, roughness: 1 }));
+  world.add(top, soil, rock);
+}
+
+function instanced(geo, mat, n, shadow = true) {
+  const m = new THREE.InstancedMesh(geo, mat, n); m.castShadow = shadow; m.receiveShadow = true; m.count = 0; m.frustumCulled = false;
+  world.add(m); own(m); return m;
+}
+const _o = new THREE.Object3D(), _c = new THREE.Color();
+function put(im, x, y, z, s = 1, ry = 0, color = null, sy = s) {
+  _o.position.set(x, y, z); _o.rotation.set(0, ry, 0); _o.scale.set(s, sy, s); _o.updateMatrix();
+  im.setMatrixAt(im.count, _o.matrix); if (color != null) im.setColorAt(im.count, _c.set(color)); im.count++;
+}
+
+function makeTree(th, rnd) {
+  const g = new THREE.Group();
+  const trunk = new THREE.Mesh(GEO.trunk, M(th.trunk)); trunk.castShadow = true; g.add(trunk);
+  const leaf = (c) => M(c, { map: leafTex });
+  if (th.tree === 'pine') {
+    [[0.42, 0.55, 0.62], [0.33, 0.5, 0.95], [0.23, 0.45, 1.25]].forEach(([r, h, y], i) => {
+      const m = new THREE.Mesh(GEO.cone, leaf(th.leaf[i])); m.scale.set(r, h, r); m.position.y = y; m.castShadow = true; g.add(m);
+    });
+  } else {
+    [[0, 0.78, 0, 0.4], [0.24, 0.66, 0.1, 0.27], [-0.22, 0.68, -0.08, 0.29], [0.03, 1.06, -0.02, 0.27]].forEach(([x, y, z, r], i) => {
+      const m = new THREE.Mesh(GEO.ball, leaf(th.leaf[i % 3])); m.scale.set(r, r * 0.9, r); m.position.set(x, y, z); m.castShadow = true; g.add(m);
+    });
+    if (th.fruit) {
+      const fm = M(th.fruit, { roughness: 0.4 });
+      for (let i = 0; i < 6; i++) {
+        const a = rnd() * 6.28, u = rnd() * 0.9 - 0.2, r = Math.sqrt(1 - u * u) * 0.4;
+        const f = new THREE.Mesh(GEO.ballLow, fm); f.scale.setScalar(0.055); f.position.set(Math.cos(a) * r, 0.78 + u * 0.36, Math.sin(a) * r); g.add(f);
+      }
+    }
+  }
+  return g;
+}
+
+function makeSign(n, th) {
+  const g = new THREE.Group();
+  const wood = M(0xb9814a);
+  const post = new THREE.Mesh(own(new THREE.CylinderGeometry(0.04, 0.05, 0.55, 6)), wood); post.position.y = 0.27; post.castShadow = true;
+  const tex = own(canvasTex(128, (c, S) => {
+    c.fillStyle = '#f4d7a4'; c.fillRect(0, 0, S, S); c.strokeStyle = '#b9814a'; c.lineWidth = 10; c.strokeRect(5, 5, S - 10, S - 10);
+    c.fillStyle = '#6b4424'; c.font = `700 ${n > 9 ? 76 : 88}px Fredoka, sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(String(n), S / 2, S / 2 + 6);
+  }));
+  const face = M(0xffffff, { map: tex, emissive: 0x555555, emissiveMap: tex });
+  const board = new THREE.Mesh(own(new THREE.BoxGeometry(0.46, 0.46, 0.06)), [wood, wood, wood, wood, face, face]);
+  board.position.y = 0.62; board.castShadow = true; board.rotation.z = -0.05;
+  g.add(post, board); return g;
+}
+
+function buildLevel(i, opts = {}) {
   levelIndex = i;
   L = parseLevel(LEVELS[i].map);
   clearWorld();
+  const th = themeOf(i); applyTheme(th);
   const { W, H } = L;
+  const rnd = mulberry(i * 977 + 13);
+  const outR = makeOutline(W, H, rnd);
+  buildIsland(outR, th, rnd);
 
-  // floating island under the level
-  const R = Math.hypot(W, H) / 2 + 1.6;
-  const islandTop = new THREE.Mesh(new THREE.CylinderGeometry(R, R * 0.96, 0.5, 40),
-    [new THREE.MeshStandardMaterial({ color: 0x9b6b43, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x7fcf6a, roughness: 1 }), new THREE.MeshStandardMaterial({ color: 0x9b6b43 })]);
-  islandTop.position.y = -0.37; islandTop.receiveShadow = true;
-  const rock = new THREE.Mesh(new THREE.ConeGeometry(R * 0.96, R * 1.1, 9), new THREE.MeshStandardMaterial({ color: 0x8a5e3b, roughness: 1, flatShading: true }));
-  rock.rotation.x = Math.PI; rock.position.y = -0.62 - R * 0.55;
-  world.add(islandTop, rock);
+  // path tiles under the walkable area
+  const tiles = instanced(GEO.tile, M(0xffffff, { roughness: 0.8 }), L.floor.size, false);
+  for (const k of L.floor) { const x = k % W, y = (k / W) | 0; put(tiles, cx(x), -0.11, cz(y), 1, 0, th.tile[(x + y) % 2]); }
 
-  // tiles under walkable area and under walls that touch it
-  const tiles = new Set(L.floor);
-  for (const k of L.walls) tiles.add(k);
-  for (const k of tiles) {
-    const x = k % W, y = (k / W) | 0;
-    const t = new THREE.Mesh(tileGeo, (x + y) % 2 ? tileMatA : tileMatB);
-    t.position.set(cx(x), -0.12, cz(y)); t.receiveShadow = true; world.add(t);
+  // hedges for walls, with a few blossoms on top
+  const hedges = instanced(GEO.hedge, M(0xffffff, { map: leafTex, roughness: 1 }), L.hedges.size);
+  const buds = instanced(GEO.ballLow, M(0xffffff, { roughness: 0.6 }), L.hedges.size * 3, false);
+  for (const k of L.hedges) {
+    const x = k % W, y = (k / W) | 0, sy = 0.9 + rnd() * 0.2;
+    put(hedges, cx(x), GROUND + 0.26 * sy - 0.02, cz(y), 1, 0, _c.set(th.hedge[0]).lerp(new THREE.Color(th.hedge[1]), rnd()).getHex(), sy);
+    const top = GROUND + 0.52 * sy - 0.03;
+    if (rnd() < 0.55) for (let n = 1 + (rnd() * 2 | 0); n > 0; n--) put(buds, cx(x) + (rnd() - 0.5) * 0.6, top, cz(y) + (rnd() - 0.5) * 0.6, 0.05 + rnd() * 0.025, 0, th.flowers[(rnd() * th.flowers.length) | 0]);
   }
-  // walls: Kenney bricks, a bit shorter so the worker stays visible
-  for (const k of L.walls) {
-    const x = k % W, y = (k / W) | 0;
-    const b = cloneModel('brick'); b.scale.set(1, 0.62, 1); b.position.set(cx(x), 0, cz(y));
-    b.rotation.y = ((x * 7 + y * 3) % 4) * Math.PI / 2;
-    world.add(b);
-  }
-  // goal pads with a floating coin
+
+  // goal pads: a glowing star ring with a floating coin
   pads = [];
   for (const k of L.goals) {
     const x = k % W, y = (k / W) | 0;
     const g = new THREE.Group(); g.position.set(cx(x), 0, cz(y));
-    const pad = new THREE.Mesh(padGeo, new THREE.MeshStandardMaterial({ color: 0xffe08a, emissive: 0xffb21e, emissiveIntensity: 0.35, roughness: 0.5 }));
-    pad.position.y = 0.025; pad.receiveShadow = true;
-    const ring = new THREE.Mesh(padRingGeo, new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffd45e, emissiveIntensity: 0.8 }));
-    ring.rotation.x = Math.PI / 2; ring.position.y = 0.06;
-    const coin = cloneModel('coin'); coin.scale.setScalar(1.15); coin.position.y = 0.45;
-    g.add(pad, ring, coin); world.add(g);
-    pads.push({ key: k, group: g, coin, ring, pad, filled: 0 });
+    const decal = new THREE.Mesh(GEO.pad, own(new THREE.MeshBasicMaterial({ map: padTex, transparent: true, depthWrite: false, fog: false })));
+    decal.position.y = 0.012; decal.renderOrder = 1;
+    const coin = cloneModel('coin'); coin.scale.setScalar(1.05); coin.position.y = 0.5;
+    g.add(decal, coin); world.add(g);
+    pads.push({ key: k, group: g, coin, decal, filled: 0 });
   }
-  // crates: Kenney coin blocks
+
+  // crates: painted wooden boxes that turn shiny gold once they are home
   crates = L.boxes.map((k, idx) => {
     const x = k % W, y = (k / W) | 0;
-    const obj = cloneModel('block-coin'); obj.scale.setScalar(0.8);
-    const mats = [];
-    obj.traverse((o) => { if (o.isMesh) { o.material = o.material.clone(); mats.push(o.material); } });
+    const mat = M(0xffffff, { map: crateWood, roughness: 0.75 });
+    const mesh = new THREE.Mesh(GEO.crate, mat); mesh.position.y = 0.4; mesh.castShadow = true; mesh.receiveShadow = true;
+    const obj = new THREE.Group(); obj.add(mesh);
     obj.position.set(cx(x), 0, cz(y));
     world.add(obj);
-    return { id: idx, key: k, obj, mats, glow: 0, from: null, to: null, pop: 0 };
+    return { id: idx, key: k, obj, mat, glow: 0, from: null, to: null, pop: 0, drop: opts.quick ? 0 : 1 + idx * 0.12, onGoal: false };
   });
 
-  // scenery: grass tufts on the island rim, a flag, clouds
-  const rnd = mulberry(i * 977 + 13);
+  // ---- scenery around the garden ----
+  const cells = [...L.floor, ...L.hedges].map((k) => [cx(k % W), cz((k / W) | 0)]);
+  const free = (x, z, m) => cells.every(([a, b]) => Math.abs(x - a) > 0.5 + m || Math.abs(z - b) > 0.5 + m);
+  const spot = (m, inner = 0.3, outer = 0.9) => {
+    for (let tries = 0; tries < 30; tries++) {
+      const a = rnd() * Math.PI * 2, r = outR(a) * (inner + rnd() * (outer - inner)), x = Math.cos(a) * r, z = Math.sin(a) * r;
+      if (free(x, z, m)) return [x, z];
+    }
+    return null;
+  };
+  const tufts = instanced(GEO.tuft, M(0xffffff, { vertexColors: true }), 40, false);
+  for (let n = 0; n < 40; n++) { const p = spot(0.1, 0.3, 0.97); if (p) put(tufts, p[0], GROUND, p[1], 0.8 + rnd() * 0.8, rnd() * 6, th.grass[1 + (n % 2)]); }
+  const fBase = instanced(GEO.flowerBase, M(0xffffff, { vertexColors: true }), 26, false), fPet = instanced(GEO.petals, M(0xffffff, { vertexColors: true, roughness: 0.6 }), 26, false);
   for (let n = 0; n < 26; n++) {
-    const a = rnd() * Math.PI * 2, r = R * (0.55 + rnd() * 0.4);
-    const px = Math.cos(a) * r, pz = Math.sin(a) * r;
-    if (Math.abs(px) < W / 2 + 0.3 && Math.abs(pz) < H / 2 + 0.3) continue;
-    const g = cloneModel(rnd() < 0.5 ? 'grass' : 'grass-small'); g.position.set(px, -0.12, pz); g.rotation.y = rnd() * 6; g.scale.setScalar(1.2 + rnd());
-    world.add(g);
+    const p = spot(0.12, 0.3, 0.93); if (!p) continue;
+    const s = 1 + rnd() * 0.7, ry = rnd() * 6;
+    put(fBase, p[0], GROUND, p[1], s, ry); put(fPet, p[0], GROUND, p[1], s, ry, th.flowers[(rnd() * th.flowers.length) | 0]);
   }
-  const flag = cloneModel('flag'); flag.position.set(W / 2 + 0.6, -0.12, -H / 2 - 0.2); flag.scale.setScalar(1.1); world.add(flag);
-  for (let n = 0; n < 9; n++) {
-    const c = cloneModel('cloud'); const s = 1.2 + rnd() * 1.8; c.scale.set(s * 1.6, s * 0.7, s);
-    const a = rnd() * Math.PI * 2, r = R + 3 + rnd() * 8;
-    c.position.set(Math.cos(a) * r, -4 + rnd() * 5, Math.sin(a) * r);
-    c.traverse((o) => { if (o.isMesh) { o.castShadow = false; } });
-    world.add(c); ambientBits.push({ obj: c, a, r, speed: 0.02 + rnd() * 0.03, y: c.position.y, ph: rnd() * 6 });
+  const shrooms = instanced(GEO.mushroom, M(0xffffff, { vertexColors: true, roughness: 0.6 }), 5);
+  for (let n = 0; n < 5; n++) { const p = spot(0.15, 0.5, 0.92); if (p) put(shrooms, p[0], GROUND, p[1], 0.9 + rnd() * 0.8, rnd() * 6); }
+  const rocks = instanced(GEO.rockBit, M(0xb9b4c4, { flatShading: true }), 6);
+  for (let n = 0; n < 6; n++) { const p = spot(0.2, 0.5, 0.95); if (p) put(rocks, p[0], GROUND + 0.03, p[1], 0.1 + rnd() * 0.12, rnd() * 6, null, 0.07 + rnd() * 0.08); }
+  const treeSpots = [];
+  for (let n = 0; n < 4; n++) {
+    const p = spot(0.75, 0.6, 0.88); if (!p || treeSpots.some((q) => Math.hypot(q[0] - p[0], q[1] - p[1]) < 1.6)) continue;
+    treeSpots.push(p);
+    const tr = makeTree(th, rnd); tr.position.set(p[0], GROUND, p[1]); tr.rotation.y = rnd() * 6; tr.scale.setScalar(0.85 + rnd() * 0.35);
+    world.add(tr); const ph = rnd() * 6; ambient.push({ tick: (t) => { tr.rotation.z = Math.sin(t * 1.1 + ph) * 0.025; tr.rotation.x = Math.cos(t * 0.9 + ph) * 0.02; } });
+  }
+  { // a little wooden sign with the garden number
+    const sx = -(W / 2 + 0.75), sz = H / 2 + 0.75;
+    const s = makeSign(i + 1, th); s.position.set(sx, GROUND, sz); s.rotation.y = 0.9; world.add(s);
+  }
+
+  // clouds drifting around and below, and a few far-away islands
+  const cloudMat = own(new THREE.MeshLambertMaterial({ color: th.cloud }));
+  const R = Math.hypot(W, H) / 2 + 2;
+  for (let n = 0; n < 12; n++) {
+    const c = new THREE.Mesh(GEO.cloud, cloudMat); const s = 0.7 + rnd() * 1.1; c.scale.setScalar(s);
+    const a0 = rnd() * Math.PI * 2, r = R + 5 + rnd() * 14, y = -3.5 - rnd() * 7, sp = (0.012 + rnd() * 0.02) * (rnd() < 0.5 ? 1 : -1), ph = rnd() * 6;
+    world.add(c); ambient.push({ tick: (t) => { const a = a0 + t * sp; c.position.set(Math.cos(a) * r, y + Math.sin(t * 0.4 + ph) * 0.25, Math.sin(a) * r); c.rotation.y = -a; } });
+  }
+  for (let n = 0; n < 3; n++) {
+    const g = new THREE.Group(), s = 1.2 + rnd() * 1.3;
+    const capm = new THREE.Mesh(own(new THREE.CylinderGeometry(1, 0.9, 0.3, 9)), M(th.grass[0])); capm.position.y = -0.15;
+    const und = new THREE.Mesh(GEO.cone, M(th.rock, { flatShading: true })); und.scale.set(0.9, 1.6, 0.9); und.rotation.x = Math.PI; und.position.y = -1.1;
+    const tr = makeTree(th, rnd); tr.scale.setScalar(0.9); tr.position.set(0.2, 0, -0.1);
+    g.add(capm, und, tr); g.scale.setScalar(s);
+    const a = (n / 3) * Math.PI * 2 + rnd() * 1.2, r = R + 9 + rnd() * 7, y = -3 - rnd() * 4, ph = rnd() * 6;
+    g.position.set(Math.cos(a) * r, y, Math.sin(a) * r); world.add(g);
+    ambient.push({ tick: (t) => { g.position.y = y + Math.sin(t * 0.5 + ph) * 0.35; } });
+  }
+
+  // butterflies by day, fireflies by night
+  if (th.critter === 'butterfly' && !reduceMotion) {
+    for (let n = 0; n < 3; n++) {
+      const g = new THREE.Group(), wm = own(new THREE.MeshBasicMaterial({ color: th.flowers[1 + (n % 3)], side: THREE.DoubleSide }));
+      const wl = new THREE.Mesh(GEO.wing, wm), wr = new THREE.Mesh(GEO.wing, wm); wr.scale.x = -1; g.add(wl, wr); g.scale.setScalar(0.7);
+      const ph = rnd() * 6, rx = W / 2 + 0.6, rz = H / 2 + 0.6, sp = 0.25 + rnd() * 0.2;
+      world.add(g); ambient.push({ tick: (t) => {
+        const a = t * sp + ph, x = Math.sin(a) * rx * Math.cos(a * 0.37 + ph), z = Math.cos(a * 0.83) * rz;
+        g.rotation.y = Math.atan2(x - g.position.x, z - g.position.z) - Math.PI / 2;
+        g.position.set(x, 0.9 + Math.sin(t * 2.1 + ph) * 0.25, z);
+        const f = Math.sin(t * 16 + ph) * 0.9; wl.rotation.z = f; wr.rotation.z = -f;
+      } });
+    }
+  }
+  if (th.critter === 'firefly') {
+    const fm = own(new THREE.MeshBasicMaterial({ color: 0xfff7a8, fog: false }));
+    for (let n = 0; n < 16; n++) {
+      const f = new THREE.Mesh(GEO.ballLow, fm), p = spot(0, 0.2, 0.95) || [0, 0], ph = rnd() * 6, h = 0.35 + rnd() * 0.9;
+      world.add(f); ambient.push({ tick: (t) => {
+        f.position.set(p[0] + Math.sin(t * 0.7 + ph) * 0.35, h + Math.sin(t * 1.3 + ph * 2) * 0.18, p[1] + Math.cos(t * 0.6 + ph) * 0.35);
+        f.scale.setScalar(0.028 + 0.022 * Math.max(0, Math.sin(t * 2.4 + ph)));
+      } });
+    }
   }
 
   // worker
@@ -509,22 +1030,25 @@ function buildLevel(i) {
   player.gx = pk % W; player.gy = (pk / W) | 0;
   player.rail.set(cx(player.gx), 0, cz(player.gy));
   player.obj.position.copy(player.rail); player.vel.set(0, 0, 0);
-  player.yaw = player.targetYaw = 0; player.moving = null; player.bump = null;
+  player.yaw = player.targetYaw = 0; player.moving = null; player.bump = null; player.spin = 0;
   world.add(player.obj);
 
   // light & shadow fit
-  const S = Math.max(W, H) / 2 + 3;
+  const S = Math.max(W, H) / 2 + 3.2;
   Object.assign(sun.shadow.camera, { left: -S, right: S, top: S, bottom: -S, near: 0.5, far: 60 });
   sun.shadow.camera.updateProjectionMatrix();
-  sun.position.set(6, 14, 8); sun.target.position.set(0, 0, 0);
 
   history = []; steps = 0; pushes = 0; won = false;
   buffered = null;
   cam.fit = Math.max(W, H * 1.1);
+  const dist = cam.fit * 1.45 + 3.5; scene.fog.near = dist + 6; scene.fog.far = dist + 46;
+  if (!opts.quick) { intro = reduceMotion ? 1 : 0; cam.yaw = cam.targetYaw - 0.5; cam.zoom = cam.targetZoom * 1.25; }
   updateCrateFlags(true);
   updateHud();
-  $('winBox').hidden = true;
+  $('winBox').hidden = true; winShown = false;
   store.set('level', i);
+  if (mode === 'play' && !opts.quick) { showBanner(); sfx.whoosh(); }
+  showTip();
 }
 
 function mulberry(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
@@ -545,7 +1069,7 @@ function makePlayer() {
   actions.walk.play(); actions.walk.setEffectiveWeight(0);
   actions.jump.setLoop(THREE.LoopOnce); actions.jump.clampWhenFinished = false;
   return { obj: holder, body: obj, mixer, actions, gx: 0, gy: 0, rail: new THREE.Vector3(), vel: new THREE.Vector3(),
-    yaw: 0, targetYaw: 0, moving: null, bump: null, walkW: 0 };
+    yaw: 0, targetYaw: 0, moving: null, bump: null, walkW: 0, spin: 0 };
 }
 
 // ---------- rules (grid based, push only, one crate at a time) ----------
@@ -576,15 +1100,17 @@ function tryStep(dir, carry = 0) {
     const bk = (ny + dy) * W + (nx + dx);
     if (walls.has(bk) || crateAt(bk)) { blocked(dx, dy); return false; }
     history.push({ p: player.gy * W + player.gx, c: crate.id, ck: crate.key });
-    crate.from = crate.obj.position.clone();
+    crate.from = crate.obj.position.clone(); crate.from.y = 0;
     crate.key = bk;
     crate.to = new THREE.Vector3(cx(nx + dx), 0, cz(ny + dy));
-    pushes++; sfx.push();
+    crate.drop = 0;
+    pushes++; sfx.push(); tickPushes();
   } else {
     history.push({ p: player.gy * W + player.gx, c: -1 });
     sfx.step();
   }
   steps++;
+  puff(player.rail, crate ? 3 : 1);
   player.moving = { from: player.rail.clone(), to: new THREE.Vector3(cx(nx), 0, cz(ny)), t: carry, dur: crate ? PUSH_TIME : STEP_TIME, crate };
   player.gx = nx; player.gy = ny;
   updateHud();
@@ -614,8 +1140,8 @@ function undo() {
   player.rail.set(cx(player.gx), 0, cz(player.gy));
   if (h.c >= 0) {
     const c = crates[h.c]; c.key = h.ck;
-    c.obj.position.set(cx(h.ck % W), 0, cz((h.ck / W) | 0)); c.pop = 0.6;
-    pushes--;
+    c.obj.position.set(cx(h.ck % W), 0, cz((h.ck / W) | 0)); c.pop = 0.6; c.drop = 0;
+    pushes--; tickPushes();
   }
   steps--;
   sfx.undo();
@@ -628,18 +1154,25 @@ function updateCrateFlags(silent) {
   for (const c of crates) {
     const on = L.goals.has(c.key);
     if (on && !c.onGoal && !silent) { c.pop = 1; sfx.home(); sparkle(c.obj.position); }
+    if (on !== c.onGoal || silent) c.mat.map = on ? crateHome : crateWood;
     c.onGoal = on; if (on) homeNow++;
   }
   for (const p of pads) p.filled = crates.some((c) => c.key === p.key) ? 1 : 0;
   if (!silent && homeNow === crates.length && !won) win();
 }
 
+function tickPushes() { const el = $('pushes'); el.classList.remove('tick'); void el.offsetWidth; el.classList.add('tick'); }
 function updateHud() {
   $('lvnum').textContent = levelIndex + 1;
   $('lvname').textContent = LEVELS[levelIndex].name;
   $('par').textContent = LEVELS[levelIndex].parPushes;
   $('pushes').textContent = pushes;
-  $('home').textContent = crates.filter((c) => L.goals.has(c.key)).length + '/' + crates.length;
+  const home = crates.filter((c) => L.goals.has(c.key)).length;
+  $('homeRow').innerHTML = crates.map((_, n) => `<i class="${n < home ? 'on' : ''}"></i>`).join('');
+  $('homeRow').setAttribute('aria-label', `Crates home: ${home} of ${crates.length}`);
+  const st = starsFor(levelIndex, pushes);
+  $('hudStars').innerHTML = [0, 1, 2].map((n) => `<svg class="i ${n < st ? '' : 'off'}"><use href="#i-star"/></svg>`).join('');
+  $('hudStars').setAttribute('aria-label', `${st} stars so far`);
   $('undoBtn').disabled = !history.length;
 }
 
@@ -647,81 +1180,106 @@ function starsFor(i, s) {
   const par = LEVELS[i].parPushes;
   return s <= par ? 3 : s <= par + Math.max(2, Math.ceil(par * 0.5)) ? 2 : 1;
 }
+const totalStars = () => LEVELS.reduce((n, _, i) => n + (best[i] == null ? 0 : starsFor(i, best[i])), 0);
 
+let winTimers = [], winShown = false;
 function win() {
-  won = true;
+  won = true; hideTip(levelIndex === 0);
   held.length = 0; buffered = null;
-  const prev = best[levelIndex];
+  const prev = best[levelIndex], isBest = prev != null && pushes < prev;
   if (prev == null || pushes < prev) { best[levelIndex] = pushes; store.set('bestPushes', best); }
-  setTimeout(() => {
+  winTimers.forEach(clearTimeout);
+  const lv = levelIndex, later = (ms, fn) => winTimers.push(setTimeout(() => { if (won && levelIndex === lv) fn(); }, ms));
+  later(250, () => {
     music.duck(2.5);
     sfx.win();
-    player.actions.jump.reset().play();
+    player.actions.jump.reset().play(); player.spin = 1;
+    crates.forEach((c, n) => setTimeout(() => { c.pop = 1; }, n * 90));
     confetti();
-  }, 250);
-  setTimeout(() => {
-    const st = starsFor(levelIndex, pushes);
-    $('winStars').innerHTML = [0, 1, 2].map((n) => `<span class="${n < st ? '' : 'off'}">★</span>`).join('');
+  });
+  later(1300, () => {
+    const st = starsFor(levelIndex, pushes), par = LEVELS[levelIndex].parPushes;
+    $('winStars').innerHTML = [0, 1, 2].map((n) => `<svg class="i ${n < st ? 'on' : ''}"><use href="#i-star"/></svg>`).join('');
     const last = levelIndex === LEVELS.length - 1;
-    $('winTitle').textContent = ['Hooray!', 'You did it!', 'Super pusher!', 'Wow!'][levelIndex % 4];
-    $('winText').textContent = `All crates are home in ${pushes} pushes.` + (st < 3 ? ' Try again for 3 stars?' : '') + (last ? ' That was the last garden!' : '');
-    $('nextBtn').textContent = last ? 'Back to garden 1' : 'Next garden';
-    $('winBox').hidden = false;
-    $('nextBtn').focus();
-  }, 1300);
+    $('winTitle').textContent = st === 3 ? ['Perfect!', 'Super star!', 'Amazing!'][levelIndex % 3] : ['Hooray!', 'You did it!', 'Well done!', 'Nice one!'][levelIndex % 4];
+    $('winText').innerHTML = `All home in <b>${pushes}</b> ${pushes === 1 ? 'push' : 'pushes'}` + (isBest ? '<span class="newbest">New best!</span>' : '');
+    $('winHint').textContent = last ? 'That was the last garden. You are a crate champion!' : st < 3 ? `Do it in ${par} ${par === 1 ? 'push' : 'pushes'} for 3 stars.` : 'That is the fewest pushes possible!';
+    $('nextLabel').textContent = last ? 'Garden 1' : 'Next';
+    $('winBox').hidden = false; winShown = true;
+    $('nextBtn').focus({ preventScroll: true });
+    for (let n = 0; n < st; n++) later(300 + n * 350, () => sfx.star(n));
+  });
 }
 
 // ---------- effects ----------
 const fx = [];
-const sparkGeo = new THREE.OctahedronGeometry(0.07);
-const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffd23f });
+const sparkMat = new THREE.MeshBasicMaterial({ color: 0xffe14a, fog: false });
+const sparkMat2 = new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false });
 function sparkle(pos) {
-  for (let n = 0; n < 14; n++) {
-    const m = new THREE.Mesh(sparkGeo, sparkMat);
+  for (let n = 0; n < 16; n++) {
+    const m = new THREE.Mesh(GEO.spark, n % 3 ? sparkMat : sparkMat2);
     m.position.copy(pos).add(new THREE.Vector3(0, 0.7, 0));
-    const a = (n / 14) * Math.PI * 2;
-    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * 1.6, 2.5 + Math.random() * 1.5, Math.sin(a) * 1.6), life: 0.8 });
+    const a = (n / 16) * Math.PI * 2, sp = 1.3 + Math.random() * 0.8;
+    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * sp, 2.5 + Math.random() * 1.8, Math.sin(a) * sp), life: 0.85 });
     world.add(m);
   }
+  const ring = new THREE.Mesh(GEO.ring, new THREE.MeshBasicMaterial({ color: 0xfff1a0, transparent: true, depthWrite: false, fog: false }));
+  ring.position.set(pos.x, 0.03, pos.z); world.add(ring);
+  fx.push({ m: ring, kind: 'ring', life: 0.55, max: 0.55, own: true });
 }
-const confColors = [0xff5b6e, 0xffb21e, 0x3fae5f, 0x4aa8ff, 0xb57bff];
-const confGeo = new THREE.PlaneGeometry(0.12, 0.07);
+function puff(pos, n) {
+  if (reduceMotion) return;
+  for (let k = 0; k < n; k++) {
+    const m = new THREE.Mesh(GEO.puff, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.7, depthWrite: false }));
+    m.position.set(pos.x + (Math.random() - 0.5) * 0.3, 0.06, pos.z + (Math.random() - 0.5) * 0.3); m.scale.setScalar(0.05);
+    world.add(m); fx.push({ m, kind: 'puff', life: 0.45, max: 0.45, own: true, v: new THREE.Vector3((Math.random() - 0.5) * 0.5, 0.35, (Math.random() - 0.5) * 0.5) });
+  }
+}
+const confMats = [0xff5f7a, 0xffbf1f, 0x39b85a, 0x4aa8ff, 0xb57bff, 0xffffff].map((c) => new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide, fog: false }));
 function confetti() {
   if (reduceMotion) return;
-  for (let n = 0; n < 120; n++) {
-    const m = new THREE.Mesh(confGeo, new THREE.MeshBasicMaterial({ color: confColors[n % 5], side: THREE.DoubleSide }));
+  for (let n = 0; n < 140; n++) {
+    const m = new THREE.Mesh(GEO.conf, confMats[n % confMats.length]);
     m.position.copy(player.obj.position).add(new THREE.Vector3(0, 1, 0));
-    const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3;
-    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * s, 4 + Math.random() * 4, Math.sin(a) * s), life: 2.2, spin: new THREE.Vector3(Math.random() * 9, Math.random() * 9, 0), flutter: true });
+    const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3.4;
+    fx.push({ m, v: new THREE.Vector3(Math.cos(a) * s, 4 + Math.random() * 4.5, Math.sin(a) * s), life: 2.6, spin: new THREE.Vector3(Math.random() * 9, Math.random() * 9, 0), kind: 'conf' });
     world.add(m);
   }
 }
 
 // ---------- camera: fixed 45° tilt, free yaw, zoom ----------
-const cam = { yaw: 0.35, targetYaw: 0.35, pitch: Math.PI / 4, zoom: 1, targetZoom: 1, fit: 8, focus: new THREE.Vector3() };
-function turnView(sign) { cam.targetYaw = Math.round((cam.targetYaw + sign * Math.PI / 2) / (Math.PI / 4)) * (Math.PI / 4); hideTip(); }
+const cam = { yaw: 0.35, targetYaw: 0.35, pitch: Math.PI / 4, zoom: 1, targetZoom: 1, fit: 8, lift: 0, focus: new THREE.Vector3() };
+function turnView(sign) { cam.targetYaw = Math.round((cam.targetYaw + sign * Math.PI / 2) / (Math.PI / 4)) * (Math.PI / 4); }
 function placeCamera(dt) {
-  const k = 1 - Math.exp(-8 * dt);
+  const k = 1 - Math.exp(-(intro < 1 ? 3.2 : 8) * dt);
+  if (mode === 'title' && !reduceMotion) cam.targetYaw += dt * 0.12;
   cam.yaw += (cam.targetYaw - cam.yaw) * k;
   cam.zoom += (cam.targetZoom - cam.zoom) * k;
   const aspect = renderer.domElement.clientWidth / Math.max(1, renderer.domElement.clientHeight);
-  const ext = Math.max(L.W, L.H) + 1.5;
-  const r = Math.max(cam.fit * 1.45 + 3.5, ext / (0.64 * aspect)) * cam.zoom;
+  const ext = Math.max(L.W, L.H) + 2.6;
+  const r = Math.max(cam.fit * 1.52 + 3.8, ext / (0.64 * aspect)) * cam.zoom * (mode === 'title' ? 1.12 : 1);
   // follow the worker gently so big gardens stay in view
-  const target = new THREE.Vector3().copy(player.obj.position).multiplyScalar(0.35);
+  const target = new THREE.Vector3().copy(player.obj.position).multiplyScalar(mode === 'title' ? 0 : 0.2);
   cam.focus.lerp(target, 1 - Math.exp(-3 * dt));
   camera.position.set(
     cam.focus.x + Math.sin(cam.yaw) * Math.cos(cam.pitch) * r,
     cam.focus.y + Math.sin(cam.pitch) * r,
     cam.focus.z + Math.cos(cam.yaw) * Math.cos(cam.pitch) * r);
-  camera.lookAt(cam.focus.x, cam.focus.y - 0.3, cam.focus.z);
+  // when the win card is up, look a little lower so the party stays visible above it
+  cam.lift += ((winShown ? 1 : 0) - cam.lift) * (1 - Math.exp(-4 * dt));
+  camera.lookAt(cam.focus.x, cam.focus.y - 0.3 - r * (0.03 + 0.2 * cam.lift), cam.focus.z);
 }
 
 // ---------- main loop ----------
 const clock = new THREE.Clock();
 let t = 0;
+const easeOut = (x) => 1 - Math.pow(1 - x, 3);
 function frame() {
   const dt = Math.min(clock.getDelta(), 0.05); t += dt;
+
+  // the island floats up into place when a garden opens, then bobs very gently
+  if (intro < 1) intro = Math.min(1, intro + dt / 0.9);
+  world.position.y = -(1 - easeOut(intro)) * 5 + (reduceMotion ? 0 : Math.sin(t * 0.8) * 0.05);
 
   // motion along the grid rail; chain steps without stopping when a key is held
   let carry = 0;
@@ -733,7 +1291,7 @@ function frame() {
     if (m.crate) m.crate.obj.position.lerpVectors(m.crate.from, m.crate.to, s);
     if (m.t >= 1) { carry = (m.t - 1) * m.dur; finishMotion(); }
   }
-  if (!player.moving && !won) {
+  if (!player.moving && !won && mode === 'play') {
     const dir = buffered || held[held.length - 1];
     buffered = null;
     if (dir) tryStep(dir, carry > 0 ? Math.min(carry, 0.05) / STEP_TIME : 0);
@@ -758,11 +1316,12 @@ function frame() {
   }
   player.body.position.set(player.bump ? player.bump.dx * bumpOff : 0, 0, player.bump ? player.bump.dy * bumpOff : 0);
 
-  // turn smoothly to face the way we walk
+  // turn smoothly to face the way we walk; a happy twirl on a win
   let dy = player.targetYaw - player.yaw;
   dy = Math.atan2(Math.sin(dy), Math.cos(dy));
   player.yaw += dy * (1 - Math.exp(-16 * dt));
-  player.obj.rotation.y = player.yaw;
+  if (player.spin > 0) player.spin = Math.max(0, player.spin - dt / 0.9);
+  player.obj.rotation.y = player.yaw + easeOut(1 - player.spin) * Math.PI * 2 * (player.spin > 0 ? 1 : 0);
   player.body.rotation.x = Math.min(speed / 5, 1) * 0.12 + (player.moving && player.moving.crate ? 0.12 : 0);
 
   // blend idle <-> walk by speed
@@ -773,37 +1332,45 @@ function frame() {
   player.actions.walk.timeScale = 1.6;
   player.mixer.update(dt);
 
-  // crates: glow when home, little squash pop
+  // crates: drop in at the start, glow when home, little squash pop
   for (const c of crates) {
+    let y = 0;
+    if (c.drop > 0) {
+      const before = c.drop; c.drop = Math.max(0, c.drop - dt / 0.55);
+      const q = Math.min(c.drop, 1); y = q * q * 5;
+      if (before > 0 && c.drop === 0) { c.pop = 0.5; if (mode === 'play') sfx.land(); puff(c.obj.position, 2); }
+    }
     c.glow += ((c.onGoal ? 1 : 0) - c.glow) * (1 - Math.exp(-8 * dt));
-    for (const m of c.mats) { m.emissive.setRGB(0.55 * c.glow, 0.42 * c.glow, 0.05 * c.glow); }
+    const pulse = c.glow * (0.16 + 0.08 * Math.sin(t * 3 + c.id));
+    c.mat.emissive.setRGB(pulse, pulse * 0.75, pulse * 0.15);
     c.pop = Math.max(0, c.pop - dt * 2.5);
     const sq = Math.sin(c.pop * Math.PI) * 0.18;
-    c.obj.scale.set(0.8 * (1 + sq * 0.5), 0.8 * (1 - sq * 0.6 + c.pop * 0.0), 0.8 * (1 + sq * 0.5));
-    c.obj.position.y = Math.sin(c.pop * Math.PI) * 0.25;
+    c.obj.scale.set(1 + sq * 0.5, 1 - sq * 0.6, 1 + sq * 0.5);
+    c.obj.position.y = y + Math.sin(c.pop * Math.PI) * 0.25;
   }
-  // pads: coins spin and hide under crates
+  // pads: coins spin and hide under crates, rings breathe
   for (const p of pads) {
     p.coin.rotation.y += dt * 2.2;
     const target = p.filled ? 0 : 1;
-    const s = p.coin.scale.x / 1.15;
+    const s = p.coin.scale.x / 1.05;
     const ns = s + (target - s) * (1 - Math.exp(-10 * dt));
-    p.coin.scale.setScalar(1.15 * ns);
-    p.coin.position.y = 0.45 + Math.sin(t * 2.4 + p.key) * 0.07;
-    p.ring.scale.setScalar(1 + Math.sin(t * 3 + p.key) * 0.05);
+    p.coin.scale.setScalar(1.05 * Math.max(ns, 0.0001));
+    p.coin.position.y = 0.52 + Math.sin(t * 2.4 + p.key) * 0.07;
+    p.decal.scale.setScalar(1 + Math.sin(t * 3 + p.key) * 0.05);
+    p.decal.rotation.y = t * 0.4;
   }
-  for (const a of ambientBits) {
-    a.a += a.speed * dt;
-    a.obj.position.set(Math.cos(a.a) * a.r, a.y + Math.sin(t * 0.5 + a.ph) * 0.2, Math.sin(a.a) * a.r);
-  }
+  for (const a of ambient) a.tick(t, dt);
   for (let n = fx.length - 1; n >= 0; n--) {
     const f = fx[n];
     f.life -= dt;
-    if (f.flutter) { f.v.y -= 6 * dt; f.v.multiplyScalar(1 - 1.6 * dt); f.m.rotation.x += f.spin.x * dt; f.m.rotation.y += f.spin.y * dt; }
-    else { f.v.y -= 9 * dt; f.m.rotation.y += 8 * dt; f.m.scale.setScalar(Math.max(0.01, f.life * 1.4)); }
-    f.m.position.addScaledVector(f.v, dt);
-    if (f.life <= 0) { world.remove(f.m); fx.splice(n, 1); }
+    if (f.kind === 'conf') { f.v.y -= 6 * dt; f.v.multiplyScalar(1 - 1.6 * dt); f.m.rotation.x += f.spin.x * dt; f.m.rotation.y += f.spin.y * dt; f.m.position.addScaledVector(f.v, dt); }
+    else if (f.kind === 'ring') { const q = 1 - f.life / f.max; f.m.scale.setScalar(0.6 + q * 2.2); f.m.material.opacity = 1 - q; }
+    else if (f.kind === 'puff') { const q = 1 - f.life / f.max; f.m.scale.setScalar(0.06 + q * 0.16); f.m.material.opacity = 0.7 * (1 - q); f.m.position.addScaledVector(f.v, dt); }
+    else { f.v.y -= 9 * dt; f.m.rotation.y += 8 * dt; f.m.scale.setScalar(Math.max(0.01, f.life * 1.5)); f.m.position.addScaledVector(f.v, dt); }
+    if (f.life <= 0) { world.remove(f.m); if (f.own) f.m.material.dispose(); fx.splice(n, 1); }
   }
+  if (starField.visible) starField.material.opacity = 0.75 + Math.sin(t * 1.7) * 0.15;
+  if (won && !reduceMotion) cam.targetYaw += dt * 0.1;
 
   placeCamera(dt);
   renderer.render(scene, camera);
@@ -817,42 +1384,67 @@ function resize() {
 }
 addEventListener('resize', resize);
 
+// ---------- hints and banners ----------
+let tipDone = store.get('tipDone', false), tipTimer = 0;
+function showTip() {
+  const el = $('tip'); clearTimeout(tipTimer);
+  if (mode !== 'play' || tipDone || levelIndex !== 0) { el.hidden = true; return; }
+  el.innerHTML = document.body.classList.contains('touch')
+    ? 'Hold the <b>yellow arrows</b> to walk.<br>Push the crate onto the <b>star ring</b>!'
+    : 'Walk with <kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd> or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>.<br>Push the crate onto the <b>star ring</b>!';
+  el.hidden = false; el.style.opacity = 1;
+}
+function hideTip(forGood) {
+  const el = $('tip'); if (el.hidden) return;
+  el.style.opacity = 0; tipTimer = setTimeout(() => (el.hidden = true), 700);
+  if (forGood) { tipDone = true; store.set('tipDone', true); }
+}
+function showBanner() {
+  const el = $('banner');
+  $('bannerNum').textContent = `Garden ${levelIndex + 1} · ${theme.name}`; $('bannerName').textContent = LEVELS[levelIndex].name;
+  el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+}
+
 // ---------- input ----------
 const KEYS = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
-let tipHidden = false;
-function hideTip() { if (!tipHidden) { tipHidden = true; const el = $('tip'); el.style.opacity = 0; setTimeout(() => (el.hidden = true), 700); } }
+const busy = () => mode !== 'play' || !$('levelBox').hidden || !$('winBox').hidden;
 function press(dir) {
   audio();
-  if (!$('levelBox').hidden || !$('winBox').hidden) return;
+  if (busy()) return;
   if (!held.includes(dir)) held.push(dir);
   if (player.moving) buffered = dir; else tryStep(dir);
-  if (steps > 2) hideTip();
+  if (steps > 2) hideTip(levelIndex === 0);
 }
 function release(dir) { const i = held.indexOf(dir); if (i >= 0) held.splice(i, 1); }
 
 addEventListener('keydown', (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (mode === 'title' && $('levelBox').hidden) { if (!e.repeat && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); play(); } return; }
   const dir = KEYS[e.code];
   if (dir) { e.preventDefault(); if (!e.repeat) press(dir); return; }
   if (e.repeat) return;
-  if (!$('winBox').hidden && (e.code === 'Enter' || e.code === 'Space')) { e.preventDefault(); $('nextBtn').click(); return; }
   if (!$('levelBox').hidden) { if (e.code === 'Escape') closeLevels(); return; }
+  if (!$('winBox').hidden) { if (e.code === 'Enter' || e.code === 'Space') { e.preventDefault(); $('nextBtn').click(); } return; }
   if (e.code === 'KeyZ' || e.code === 'KeyU' || e.code === 'Backspace') { e.preventDefault(); undo(); }
   else if (e.code === 'KeyR') restart();
-  else if (e.code === 'KeyM') $('musicBtn').click();
+  else if (e.code === 'KeyM') setMusic(!musicOn);
   else if (e.code === 'KeyQ') turnView(-1);
   else if (e.code === 'KeyE') turnView(1);
+  else if (e.code === 'Escape') openLevels();
 });
 addEventListener('keyup', (e) => { const dir = KEYS[e.code]; if (dir) release(dir); });
 addEventListener('blur', () => { held.length = 0; });
 
 document.querySelectorAll('#dpad button').forEach((b) => {
   const dir = b.dataset.dir;
-  b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); press(dir); });
-  const up = () => release(dir);
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); b.setPointerCapture?.(e.pointerId); b.classList.add('down'); press(dir); });
+  const up = () => { b.classList.remove('down'); release(dir); };
   b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('lostpointercapture', up);
   b.addEventListener('contextmenu', (e) => e.preventDefault());
 });
+// show the on-screen arrows as soon as anyone touches the screen
+if (matchMedia('(any-pointer: coarse)').matches) document.body.classList.add('touch');
+addEventListener('pointerdown', (e) => { if (e.pointerType === 'touch' && !document.body.classList.contains('touch')) { document.body.classList.add('touch'); showTip(); } }, { capture: true, passive: true });
 
 // drag to orbit, wheel / pinch to zoom
 const canvas = renderer.domElement;
@@ -865,7 +1457,7 @@ canvas.addEventListener('pointerdown', (e) => {
 canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId); if (!p) return;
   if (pointers.size === 1) {
-    cam.targetYaw -= (e.clientX - p.x) * 0.008; if (Math.abs(e.clientX - p.x) > 2) hideTip();
+    cam.targetYaw -= (e.clientX - p.x) * 0.008;
   } else if (pointers.size === 2) {
     p.x = e.clientX; p.y = e.clientY;
     const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y);
@@ -878,48 +1470,77 @@ const endPointer = (e) => { pointers.delete(e.pointerId); if (!pointers.size) { 
 canvas.addEventListener('pointerup', endPointer); canvas.addEventListener('pointercancel', endPointer);
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); cam.targetZoom = THREE.MathUtils.clamp(cam.targetZoom * (1 + Math.sign(e.deltaY) * 0.1), 0.6, 1.6); }, { passive: false });
 
-// buttons
-function restart() { if (!$('levelBox').hidden) return; buildLevel(levelIndex); }
+// ---------- screens ----------
+function paintTitle() {
+  const lv = Math.min(Math.max(0, store.get('level', 0)), LEVELS.length - 1);
+  const started = Object.keys(best).length > 0 || lv > 0;
+  $('playLabel').textContent = started ? `Play garden ${lv + 1}` : 'Play';
+  $('titleStars').textContent = `${totalStars()} / ${LEVELS.length * 3}`;
+}
+function showTitle() {
+  mode = 'title'; held.length = 0; paintTitle();
+  document.body.classList.add('title'); $('titleBox').classList.remove('out');
+  $('winBox').hidden = true; winShown = false; $('levelBox').hidden = true; showTip();
+}
+function play(level) {
+  audio(); sfx.click();
+  mode = 'play';
+  document.body.classList.remove('title'); $('titleBox').classList.add('out');
+  if (level != null && (level !== levelIndex || won || history.length)) buildLevel(level);
+  else { showBanner(); showTip(); }
+}
+function restart() { if (busy()) return; buildLevel(levelIndex, { quick: true }); crates.forEach((c) => (c.pop = 0.5)); sfx.undo(); }
 $('undoBtn').onclick = () => { audio(); undo(); };
 $('restartBtn').onclick = () => { audio(); restart(); };
 $('turnL').onclick = () => turnView(-1);
 $('turnR').onclick = () => turnView(1);
-$('soundBtn').onclick = () => { soundOn = !soundOn; store.set('sound', soundOn); paintSound(); paintMusic(); if (soundOn) audio(); else music.stop(); };
+$('soundBtn').onclick = toggleSound;
+$('soundBtn2').onclick = toggleSound;
 $('musicBtn').onclick = () => {
-  if (!soundOn) { soundOn = true; store.set('sound', true); paintSound(); setMusic(true); }
+  if (!soundOn) { soundOn = true; store.set('sound', true); setMusic(true); }
   else setMusic(!musicOn);
+  sfx.click();
 };
-$('nextBtn').onclick = () => buildLevel((levelIndex + 1) % LEVELS.length);
-$('replayBtn').onclick = () => buildLevel(levelIndex);
+$('playBtn').onclick = () => play();
+$('nextBtn').onclick = () => { sfx.click(); buildLevel((levelIndex + 1) % LEVELS.length); };
+$('replayBtn').onclick = () => { sfx.click(); buildLevel(levelIndex); };
 function openLevels() {
-  held.length = 0;
-  $('levelGrid').innerHTML = LEVELS.map((lv, i) => {
-    const b = best[i];
-    const st = b == null ? 0 : starsFor(i, b);
-    return `<button data-i="${i}" class="${i >= 10 ? 'hard' : ''} ${b != null ? 'done' : ''} ${i === levelIndex ? 'cur' : ''}" aria-label="Garden ${i + 1}: ${lv.name}">${i + 1}<small>${'★'.repeat(st)}${'☆'.repeat(b == null ? 0 : 3 - st)}</small></button>`;
+  held.length = 0; sfx.click();
+  $('gridStars').textContent = `${totalStars()} / ${LEVELS.length * 3}`;
+  $('levelGrid').innerHTML = THEMES.map((th, z) => {
+    const items = LEVELS.slice(z * 5, z * 5 + 5).map((lv, n) => {
+      const i = z * 5 + n, b = best[i], st = b == null ? 0 : starsFor(i, b);
+      return `<button data-i="${i}" class="btn ${b != null ? 'done' : ''} ${i === levelIndex ? 'cur' : ''}" aria-label="Garden ${i + 1}: ${lv.name}${b != null ? `, ${st} stars` : ''}">${i + 1}<span class="s">${[0, 1, 2].map((k) => `<svg class="i ${k < st ? 'on' : ''}"><use href="#i-star"/></svg>`).join('')}</span></button>`;
+    }).join('');
+    return `<div class="zone" style="--zbg:${th.ui.bg};--zc:${th.ui.c};--zdeep:${th.ui.deep};--zink:${th.ui.ink};--zlip:${th.ui.lip}"><h3>${th.name}${th.tag ? `<span>${th.tag}</span>` : ''}</h3><div class="grid">${items}</div></div>`;
   }).join('');
   $('levelBox').hidden = false;
 }
 function closeLevels() { $('levelBox').hidden = true; }
 $('levelsBtn').onclick = openLevels;
-$('closeLevels').onclick = closeLevels;
-$('levelGrid').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; closeLevels(); buildLevel(+b.dataset.i); };
+$('titleLevels').onclick = () => { audio(); openLevels(); };
+$('winLevels').onclick = openLevels;
+$('closeLevels').onclick = () => { sfx.click(); closeLevels(); };
+$('homeBtn').onclick = () => { sfx.click(); showTitle(); };
+$('levelGrid').onclick = (e) => { const b = e.target.closest('button'); if (!b) return; closeLevels(); play(+b.dataset.i); };
 $('levelBox').addEventListener('pointerdown', (e) => { if (e.target === $('levelBox')) closeLevels(); });
 
 // ---------- start ----------
 async function start(saved) {
-  paintSound(); paintMusic();
-  if (matchMedia('(pointer: coarse)').matches) $('tip').textContent = 'Hold the yellow arrows to walk. Push every crate onto a shiny coin pad! Swipe the garden or tap the round buttons to turn the view.';
+  paintAudio();
+  try { await Promise.race([document.fonts.load('700 40px Fredoka'), new Promise((r) => setTimeout(r, 1500))]); } catch {}
   await loadModels();
   player = makePlayer();
   resize();
   const startLevel = Math.min(Math.max(0, saved.level ?? store.get('level', 0)), LEVELS.length - 1);
-  buildLevel(startLevel);
-  if (saved.history && saved.level === startLevel) { for (const h of saved.history) replay(h); }
-  $('loading').remove();
+  const resume = saved.history && saved.level === startLevel;
+  if (resume) { mode = 'play'; document.body.classList.remove('title'); }
+  buildLevel(startLevel, { quick: resume });
+  if (resume) { for (const h of saved.history) replay(h); } else showTitle();
+  const ld = $('loading'); ld.style.opacity = 0; setTimeout(() => ld.remove(), 500);
   clock.start();
   requestAnimationFrame(frame);
-  window.__beep = { music, get audioState() { return actx ? actx.state : "none"; }, suspendAudio: () => actx.suspend(), tryStep, undo, buildLevel, get state() { return { level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
+  window.__beep = { music, get audioState() { return actx ? actx.state : "none"; }, suspendAudio: () => actx.suspend(), tryStep, undo, buildLevel, play, showTitle, get state() { return { mode, level: levelIndex, gx: player.gx, gy: player.gy, steps, pushes, won, crates: crates.map((c) => c.key) }; }, cam, finishMotion };
 }
 function replay(h) {
   // re-apply a saved step (used when the page updates while someone is playing)
@@ -928,6 +1549,7 @@ function replay(h) {
   const dir = ['up', 'down', 'left', 'right'].find((d) => { const [a, b] = screenDirToGrid(d); return a === dx && b === dy; });
   if (dir) { tryStep(dir); finishMotion(); }
 }
-window.claude?.hot?.snapshot?.(() => ({ level: levelIndex, history: history.map((h, i) => ({ to: (history[i + 1]?.p ?? (player.gy * L.W + player.gx)) })) }));
+document.body.classList.add('title');
+window.claude?.hot?.snapshot?.(() => ({ level: levelIndex, history: mode === 'play' ? history.map((h, i) => ({ to: (history[i + 1]?.p ?? (player.gy * L.W + player.gx)) })) : null }));
 window.claude?.hot?.ready ? window.claude.hot.ready(start) : start(window.claude?.hot?.data ?? {});
 </script>
